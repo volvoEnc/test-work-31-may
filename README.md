@@ -1,59 +1,68 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# Proxy Manager
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Dockerized Laravel 12 and Vue 3 application for managing proxy servers and asynchronous availability checks.
 
-## About Laravel
+## Services
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+- Backend: http://localhost:8080
+- Vite dev server: http://localhost:5173
+- MySQL: localhost:3306
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Setup
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+```bash
+cp .env.example .env
+docker compose build
+docker compose run --rm php-fpm composer install
+docker compose run --rm php-fpm php artisan key:generate
+docker compose run --rm php-fpm php artisan migrate
+docker compose up -d
+```
 
-## Learning Laravel
+`docker compose up -d` also runs the one-shot `setup` service, which installs Composer dependencies, creates `.env` when it is missing, generates an application key when needed, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start.
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+## Queue And Scheduler
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+The `queue` service runs:
 
-## Laravel Sponsors
+```bash
+php artisan queue:work database --queue=proxy-checks,default --sleep=1 --tries=1 --timeout=30
+```
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+The `scheduler` service runs:
 
-### Premium Partners
+```bash
+php artisan schedule:work
+```
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+Production still needs one system cron if scheduler is not run as a long-lived container:
 
-## Contributing
+```bash
+* * * * * cd /path/to/app && php artisan schedule:run >> /dev/null 2>&1
+```
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+## Proxy Check Configuration
 
-## Code of Conduct
+```dotenv
+PROXY_CHECK_URL=https://example.com/
+PROXY_CHECK_INTERVAL_MINUTES=5
+PROXY_CHECK_TIMEOUT_SECONDS=8
+PROXY_CHECK_CONNECT_TIMEOUT_SECONDS=3
+PROXY_CHECK_SUCCESS_CODES=200,204,301,302
+PROXY_CHECK_STALE_AFTER_SECONDS=120
+PROXY_CHECK_QUEUE=proxy-checks
+PROXY_CHECK_UNIQUE_FOR_SECONDS=300
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+## Verification
 
-## Security Vulnerabilities
+```bash
+docker compose run --rm php-fpm php artisan test
+docker compose run --rm node-vite npm run build
+docker compose run --rm node-vite npm run lint
+docker compose run --rm node-vite npm run test
+```
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Status Rules
 
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+New and manually refreshed proxies are queued for asynchronous checking. The queue job calls the configured check URL through the proxy and writes `online` or `offline` results to `proxy_checks`. Stale `checking` rows are marked `offline` by the scheduled dispatcher.
