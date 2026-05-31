@@ -18,14 +18,15 @@ class ApplyProxyCheckResultAction
         ProxyCheckResult $result,
         ProxyCheckSource $source,
         ?string $expectedGeneration = null,
+        bool $guardGeneration = false,
     ): void {
-        DB::transaction(function () use ($proxy, $result, $source, $expectedGeneration): void {
+        DB::transaction(function () use ($proxy, $result, $source, $expectedGeneration, $guardGeneration): void {
             /** @var ProxyServer $lockedProxy */
             $lockedProxy = ProxyServer::query()
                 ->lockForUpdate()
                 ->findOrFail($proxy->id);
 
-            if ($expectedGeneration !== null && $lockedProxy->check_generation !== $expectedGeneration) {
+            if ($guardGeneration && $lockedProxy->check_generation !== $expectedGeneration) {
                 return;
             }
 

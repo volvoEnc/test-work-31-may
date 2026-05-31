@@ -69,6 +69,55 @@ class CheckProxyStatusJobTest extends TestCase
         $this->assertSame(0, ProxyCheck::query()->count());
     }
 
+    public function test_legacy_null_generation_job_result_is_ignored_if_proxy_gets_generation_during_check(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
+        $proxy = $this->createProxyServer([
+            'status' => ProxyStatus::Unknown,
+            'checking_started_at' => null,
+            'check_generation' => null,
+            'last_checked_at' => null,
+            'response_time_ms' => null,
+        ]);
+
+        $this->app->bind(ProxyCheckerInterface::class, function () use ($proxy): ProxyCheckerInterface {
+            return new class($proxy->id) implements ProxyCheckerInterface
+            {
+                public function __construct(private readonly int $proxyId) {}
+
+                public function check(ProxyServer $proxy): ProxyCheckResult
+                {
+                    ProxyServer::query()
+                        ->whereKey($this->proxyId)
+                        ->update(['check_generation' => 'new-generation']);
+
+                    return new ProxyCheckResult(
+                        ProxyStatus::Online,
+                        CarbonImmutable::parse('2026-05-31 12:00:00'),
+                        CarbonImmutable::parse('2026-05-31 12:00:01'),
+                        10,
+                        204,
+                        null,
+                        null,
+                    );
+                }
+            };
+        });
+
+        app(CheckProxyStatusJob::class, [
+            'proxyId' => $proxy->id,
+            'source' => ProxyCheckSource::Auto,
+            'checkGeneration' => null,
+        ])->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class));
+
+        $proxy->refresh();
+        $this->assertSame(ProxyStatus::Checking, $proxy->status);
+        $this->assertSame('new-generation', $proxy->check_generation);
+        $this->assertNull($proxy->last_checked_at);
+        $this->assertNull($proxy->response_time_ms);
+        $this->assertSame(0, ProxyCheck::query()->count());
+    }
+
     public function test_failed_sanitizes_raw_and_encoded_credentials_before_persisting(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));

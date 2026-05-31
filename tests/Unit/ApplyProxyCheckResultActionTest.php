@@ -94,6 +94,77 @@ class ApplyProxyCheckResultActionTest extends TestCase
         $this->assertStringContainsString('://***@', $check->error_message);
     }
 
+    public function test_guarded_stale_expected_generation_does_not_overwrite_proxy_or_create_history(): void
+    {
+        $proxy = $this->createProxyServer([
+            'status' => ProxyStatus::Checking,
+            'checking_started_at' => now()->subMinute(),
+            'check_generation' => 'new-generation',
+            'last_checked_at' => null,
+            'response_time_ms' => null,
+        ]);
+        $result = new ProxyCheckResult(
+            ProxyStatus::Offline,
+            CarbonImmutable::parse('2026-05-31 12:00:00'),
+            CarbonImmutable::parse('2026-05-31 12:00:01'),
+            null,
+            null,
+            ProxyCheckErrorCode::ConnectionFailed,
+            'Old check failed.',
+        );
+
+        app(ApplyProxyCheckResultAction::class)->execute(
+            $proxy,
+            $result,
+            ProxyCheckSource::Auto,
+            'old-generation',
+            true,
+        );
+
+        $proxy->refresh();
+        $this->assertSame(ProxyStatus::Checking, $proxy->status);
+        $this->assertSame('new-generation', $proxy->check_generation);
+        $this->assertNull($proxy->last_checked_at);
+        $this->assertNull($proxy->response_time_ms);
+        $this->assertNull($proxy->failure_reason);
+        $this->assertSame(0, ProxyCheck::query()->count());
+    }
+
+    public function test_guarded_null_expected_generation_does_not_apply_after_proxy_receives_generation(): void
+    {
+        $proxy = $this->createProxyServer([
+            'status' => ProxyStatus::Checking,
+            'checking_started_at' => now()->subMinute(),
+            'check_generation' => 'new-generation',
+            'last_checked_at' => null,
+            'response_time_ms' => null,
+        ]);
+        $result = new ProxyCheckResult(
+            ProxyStatus::Online,
+            CarbonImmutable::parse('2026-05-31 12:00:00'),
+            CarbonImmutable::parse('2026-05-31 12:00:01'),
+            25,
+            204,
+            null,
+            null,
+        );
+
+        app(ApplyProxyCheckResultAction::class)->execute(
+            $proxy,
+            $result,
+            ProxyCheckSource::Auto,
+            null,
+            true,
+        );
+
+        $proxy->refresh();
+        $this->assertSame(ProxyStatus::Checking, $proxy->status);
+        $this->assertSame('new-generation', $proxy->check_generation);
+        $this->assertNull($proxy->last_checked_at);
+        $this->assertNull($proxy->response_time_ms);
+        $this->assertSame(0, ProxyCheck::query()->count());
+    }
+
     private function createProxyServer(array $overrides = []): ProxyServer
     {
         $attributes = array_merge([

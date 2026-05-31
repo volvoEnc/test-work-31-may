@@ -68,7 +68,7 @@ class CheckProxyStatusJob implements ShouldBeUnique, ShouldQueue
 
         $result = $checker->check($proxy->refresh());
 
-        $applyResult->execute($proxy, $result, $this->source, $this->checkGeneration);
+        $applyResult->execute($proxy, $result, $this->source, $this->checkGeneration, true);
     }
 
     public function failed(Throwable $exception): void
@@ -101,6 +101,7 @@ class CheckProxyStatusJob implements ShouldBeUnique, ShouldQueue
             ),
             $this->source,
             $this->checkGeneration,
+            true,
         );
     }
 

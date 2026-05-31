@@ -44,6 +44,7 @@ class DispatchDueProxyChecksJob implements ShouldQueue
                 foreach ($proxies as $proxy) {
                     $staleProxyIds[] = $proxy->id;
                     $startedAt = $proxy->checking_started_at?->toImmutable() ?? $now;
+                    $checkGeneration = $proxy->check_generation;
 
                     $applyResult->execute(
                         $proxy,
@@ -57,6 +58,8 @@ class DispatchDueProxyChecksJob implements ShouldQueue
                             'Proxy check became stale.',
                         ),
                         ProxyCheckSource::Auto,
+                        $checkGeneration,
+                        true,
                     );
                 }
             });
