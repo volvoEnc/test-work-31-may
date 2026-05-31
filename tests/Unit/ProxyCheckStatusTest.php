@@ -7,7 +7,9 @@ use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\DB;
 use InvalidArgumentException;
 use Tests\TestCase;
 
@@ -44,6 +46,39 @@ class ProxyCheckStatusTest extends TestCase
             'status' => ProxyStatus::Checking,
             'started_at' => now(),
             'finished_at' => now(),
+        ]);
+    }
+
+    public function test_it_rejects_unknown_check_status(): void
+    {
+        $proxyServer = $this->createProxyServer();
+
+        $this->expectException(InvalidArgumentException::class);
+        $this->expectExceptionMessage('Proxy check status must be online or offline.');
+
+        ProxyCheck::create([
+            'proxy_server_id' => $proxyServer->id,
+            'source' => ProxyCheckSource::Manual,
+            'status' => ProxyStatus::Unknown,
+            'started_at' => now(),
+            'finished_at' => now(),
+        ]);
+    }
+
+    public function test_database_rejects_invalid_check_status_when_bypassing_eloquent(): void
+    {
+        $proxyServer = $this->createProxyServer();
+
+        $this->expectException(QueryException::class);
+
+        DB::table('proxy_checks')->insert([
+            'proxy_server_id' => $proxyServer->id,
+            'source' => ProxyCheckSource::Manual->value,
+            'status' => ProxyStatus::Checking->value,
+            'started_at' => now(),
+            'finished_at' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
         ]);
     }
 
