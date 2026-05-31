@@ -22,7 +22,7 @@ class ProxyUriFactory
 
         $credentials = '';
 
-        if (filled($proxy->username)) {
+        if (filled($proxy->username) || filled($proxy->password)) {
             $credentials = rawurlencode((string) $proxy->username);
 
             if (filled($proxy->password)) {

@@ -21,12 +21,13 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
     {
         $startedAt = CarbonImmutable::now();
         $started = hrtime(true);
+        $proxyUri = $this->uriFactory->make($proxy);
 
         try {
             $response = Http::connectTimeout((int) config('proxy-manager.check.connect_timeout_seconds'))
                 ->timeout((int) config('proxy-manager.check.timeout_seconds'))
                 ->withOptions([
-                    'proxy' => $this->uriFactory->make($proxy),
+                    'proxy' => $proxyUri,
                     'allow_redirects' => false,
                 ])
                 ->get((string) config('proxy-manager.check.url'));
@@ -48,6 +49,18 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
                 );
             }
 
+            if ($httpStatus === 407) {
+                return new ProxyCheckResult(
+                    ProxyStatus::Offline,
+                    $startedAt,
+                    $finishedAt,
+                    $responseTimeMs,
+                    $httpStatus,
+                    ProxyCheckErrorCode::ProxyAuthFailed,
+                    'Proxy authentication failed.',
+                );
+            }
+
             return new ProxyCheckResult(
                 ProxyStatus::Offline,
                 $startedAt,
@@ -58,14 +71,20 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
                 "Check URL returned HTTP {$httpStatus}.",
             );
         } catch (ConnectionException $exception) {
-            return $this->failure($startedAt, $started, $this->classifyConnectionError($exception), $exception->getMessage());
+            return $this->failure($startedAt, $started, $this->classifyConnectionError($exception), $exception->getMessage(), $proxy, $proxyUri);
         } catch (Throwable $exception) {
-            return $this->failure($startedAt, $started, ProxyCheckErrorCode::UnexpectedError, $exception->getMessage());
+            return $this->failure($startedAt, $started, ProxyCheckErrorCode::UnexpectedError, $exception->getMessage(), $proxy, $proxyUri);
         }
     }
 
-    private function failure(CarbonImmutable $startedAt, int $started, ProxyCheckErrorCode $code, string $message): ProxyCheckResult
-    {
+    private function failure(
+        CarbonImmutable $startedAt,
+        int $started,
+        ProxyCheckErrorCode $code,
+        string $message,
+        ProxyServer $proxy,
+        string $proxyUri,
+    ): ProxyCheckResult {
         return new ProxyCheckResult(
             ProxyStatus::Offline,
             $startedAt,
@@ -73,7 +92,7 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
             (int) round((hrtime(true) - $started) / 1_000_000),
             null,
             $code,
-            $this->sanitize($message),
+            $this->sanitize($message, $proxy, $proxyUri),
         );
     }
 
@@ -90,9 +109,29 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
         };
     }
 
-    private function sanitize(string $message): string
+    private function sanitize(string $message, ProxyServer $proxy, string $proxyUri): string
     {
-        $message = preg_replace('/:\/\/[^@\s]+@/', '://***@', $message) ?? $message;
+        $redactions = [$proxyUri];
+
+        foreach ([$proxy->username, $proxy->password] as $credential) {
+            if (! filled($credential)) {
+                continue;
+            }
+
+            $redactions[] = (string) $credential;
+            $redactions[] = rawurlencode((string) $credential);
+        }
+
+        foreach (array_unique($redactions) as $redaction) {
+            if ($redaction === '') {
+                continue;
+            }
+
+            $message = str_replace($redaction, '***', $message);
+        }
+
+        $message = preg_replace('/:\/\/[^@\s]*@/', '://***@', $message) ?? $message;
+        $message = preg_replace('/(^|\s)[^\s:\/]+:[^\s@]+@/', '$1***@', $message) ?? $message;
 
         return mb_strimwidth($message, 0, 500, '');
     }

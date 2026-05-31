@@ -5,11 +5,14 @@ namespace Tests\Unit;
 use App\Enums\ProxyScheme;
 use App\Models\ProxyServer;
 use App\Services\ProxyChecker\ProxyUriFactory;
+use Illuminate\Foundation\Testing\RefreshDatabase;
 use PHPUnit\Framework\Attributes\DataProvider;
 use Tests\TestCase;
 
 class ProxyUriFactoryTest extends TestCase
 {
+    use RefreshDatabase;
+
     #[DataProvider('schemeProvider')]
     public function test_it_builds_proxy_uri_for_supported_schemes(ProxyScheme $scheme, string $expectedScheme): void
     {
@@ -27,6 +30,29 @@ class ProxyUriFactoryTest extends TestCase
         );
 
         $this->assertSame('http://user%20name:p%40ss%3Aword@proxy.example:8080', (new ProxyUriFactory)->make($proxy));
+    }
+
+    public function test_it_builds_proxy_uri_with_password_only_credentials(): void
+    {
+        $proxy = $this->proxyServer(ProxyScheme::Http, password: 'secret');
+
+        $this->assertSame('http://:secret@proxy.example:8080', (new ProxyUriFactory)->make($proxy));
+    }
+
+    public function test_it_builds_proxy_uri_with_persisted_encrypted_password(): void
+    {
+        $proxy = ProxyServer::create([
+            'scheme' => ProxyScheme::Http,
+            'host' => 'proxy.example',
+            'port' => 8080,
+            'username' => 'user',
+            'password' => 'persisted p@ss',
+            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'proxy.example', 8080, 'user'),
+        ]);
+
+        $reloadedProxy = ProxyServer::findOrFail($proxy->id);
+
+        $this->assertSame('http://user:persisted%20p%40ss@proxy.example:8080', (new ProxyUriFactory)->make($reloadedProxy));
     }
 
     public function test_it_wraps_ipv6_host_in_brackets(): void
