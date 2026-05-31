@@ -52,7 +52,9 @@ class ProxyServer extends Model
 
     public function hasCredentials(): bool
     {
-        return filled($this->username) || filled($this->password);
+        $rawPassword = $this->getRawOriginal('password') ?? ($this->getAttributes()['password'] ?? null);
+
+        return filled($this->username) || filled($rawPassword);
     }
 
     public function displayAddress(): string

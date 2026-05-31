@@ -8,6 +8,7 @@ use App\Enums\ProxyStatus;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use InvalidArgumentException;
 
 class ProxyCheck extends Model
 {
@@ -34,6 +35,19 @@ class ProxyCheck extends Model
             'started_at' => 'immutable_datetime',
             'finished_at' => 'immutable_datetime',
         ];
+    }
+
+    protected static function booted(): void
+    {
+        static::saving(function (self $check): void {
+            $status = $check->status instanceof ProxyStatus
+                ? $check->status
+                : ProxyStatus::from((string) $check->status);
+
+            if (! in_array($status, [ProxyStatus::Online, ProxyStatus::Offline], true)) {
+                throw new InvalidArgumentException('Proxy check status must be online or offline.');
+            }
+        });
     }
 
     public function proxyServer(): BelongsTo

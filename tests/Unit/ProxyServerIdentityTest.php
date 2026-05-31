@@ -20,6 +20,17 @@ class ProxyServerIdentityTest extends TestCase
     {
         $hash = ProxyServer::identityHashFor('socks5', '2001:db8::1', 1080, null);
 
-        $this->assertSame(64, strlen($hash));
+        $this->assertSame(hash('sha256', 'socks5|2001:db8::1|1080|'), $hash);
+    }
+
+    public function test_it_detects_raw_stored_password_without_decrypting_it(): void
+    {
+        $proxyServer = new ProxyServer;
+        $proxyServer->setRawAttributes([
+            'username' => null,
+            'password' => 'not-valid-encrypted-ciphertext',
+        ], true);
+
+        $this->assertTrue($proxyServer->hasCredentials());
     }
 }
