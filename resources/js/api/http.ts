@@ -27,7 +27,7 @@ function makeUrl(path: string): string {
   return `${baseUrl.replace(/\/$/, '')}/${path.replace(/^\//, '')}`;
 }
 
-async function parseJson(response: Response): Promise<unknown> {
+async function parseJson(response: Response, fallbackOnMalformed = false): Promise<unknown> {
   const text = await response.text();
 
   if (!text) {
@@ -37,7 +37,11 @@ async function parseJson(response: Response): Promise<unknown> {
   try {
     return JSON.parse(text);
   } catch {
-    return undefined;
+    if (fallbackOnMalformed) {
+      return {};
+    }
+
+    throw new Error('Unable to parse JSON response.');
   }
 }
 
@@ -58,7 +62,7 @@ export async function requestJson<T>(path: string, options: RequestInit = {}): P
     return undefined as T;
   }
 
-  const payload = await parseJson(response);
+  const payload = await parseJson(response, !response.ok);
 
   if (!response.ok) {
     const errorPayload = (payload ?? {}) as ErrorPayload;

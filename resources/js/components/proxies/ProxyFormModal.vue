@@ -50,9 +50,9 @@
               type="password"
               maxlength="2048"
               autocomplete="new-password"
-              :placeholder="proxy ? 'Unchanged' : ''"
               :disabled="clearPassword"
             />
+            <span v-if="proxy" class="field-hint">Leave empty to keep the current password.</span>
             <span v-if="fieldErrors.password?.[0]" class="field-error">{{ fieldErrors.password[0] }}</span>
           </label>
         </div>

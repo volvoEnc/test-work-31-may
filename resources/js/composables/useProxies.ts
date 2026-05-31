@@ -35,6 +35,7 @@ export function useProxies() {
   let listController: AbortController | null = null;
   let pollIntervalId: number | undefined;
   let focusedPollTimeoutId: number | undefined;
+  let focusedPollStartedAt: number | null = null;
 
   const clearSaveErrors = () => {
     error.value = '';
@@ -127,13 +128,36 @@ export function useProxies() {
       window.clearTimeout(focusedPollTimeoutId);
     }
 
+    const startedAt = focusedPollStartedAt;
+
+    if (startedAt === null) {
+      focusedPollTimeoutId = undefined;
+      return;
+    }
+
+    const elapsed = Date.now() - startedAt;
+
+    if (elapsed >= 30000) {
+      focusedPollTimeoutId = undefined;
+      return;
+    }
+
+    const delay = Date.now() === startedAt ? 1000 : 3000;
+
+    if (elapsed + delay > 30000) {
+      focusedPollTimeoutId = undefined;
+      return;
+    }
+
     focusedPollTimeoutId = window.setTimeout(async () => {
       await load();
 
-      if (id && checkingIds.has(id)) {
+      focusedPollTimeoutId = undefined;
+
+      if (id && checkingIds.has(id) && Date.now() - startedAt < 30000) {
         scheduleFocusedPolling(id);
       }
-    }, 5000);
+    }, delay);
   };
 
   const check = async (id: number) => {
@@ -142,7 +166,7 @@ export function useProxies() {
 
     try {
       await checkProxy(id);
-      await load();
+      focusedPollStartedAt = Date.now();
       scheduleFocusedPolling(id);
       return true;
     } catch (unknownError) {
@@ -159,6 +183,7 @@ export function useProxies() {
     try {
       await checkAllProxies();
       await load();
+      focusedPollStartedAt = Date.now();
       scheduleFocusedPolling();
       return true;
     } catch (unknownError) {
