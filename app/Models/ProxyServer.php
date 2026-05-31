@@ -22,6 +22,7 @@ class ProxyServer extends Model
         'identity_hash',
         'status',
         'checking_started_at',
+        'check_generation',
         'last_checked_at',
         'last_success_at',
         'response_time_ms',
@@ -31,6 +32,7 @@ class ProxyServer extends Model
     protected $hidden = [
         'password',
         'identity_hash',
+        'check_generation',
     ];
 
     protected function casts(): array

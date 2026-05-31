@@ -2,6 +2,8 @@
 
 namespace Tests\Unit;
 
+use App\Actions\Proxies\ApplyProxyCheckResultAction;
+use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;
@@ -35,8 +37,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
         ]);
 
         app(DispatchDueProxyChecksJob::class)->handle(
-            app(\App\Actions\Proxies\ScheduleProxyCheckAction::class),
-            app(\App\Actions\Proxies\ApplyProxyCheckResultAction::class),
+            app(ScheduleProxyCheckAction::class),
+            app(ApplyProxyCheckResultAction::class),
         );
 
         $staleProxy->refresh();
@@ -85,13 +87,17 @@ class DispatchDueProxyChecksJobTest extends TestCase
         ]);
 
         app(DispatchDueProxyChecksJob::class)->handle(
-            app(\App\Actions\Proxies\ScheduleProxyCheckAction::class),
-            app(\App\Actions\Proxies\ApplyProxyCheckResultAction::class),
+            app(ScheduleProxyCheckAction::class),
+            app(ApplyProxyCheckResultAction::class),
         );
 
         Bus::assertDispatched(CheckProxyStatusJob::class, 2);
-        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $neverChecked->id);
-        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $dueProxy->id);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $neverChecked->id
+            && filled($job->checkGeneration)
+            && $job->checkGeneration === $neverChecked->refresh()->check_generation);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $dueProxy->id
+            && filled($job->checkGeneration)
+            && $job->checkGeneration === $dueProxy->refresh()->check_generation);
         Bus::assertNotDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $freshProxy->id);
         Bus::assertNotDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $checkingProxy->id);
 

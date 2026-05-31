@@ -9,6 +9,8 @@ use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
 use App\Services\ProxyChecker\ProxyCheckerInterface;
+use App\Services\ProxyChecker\ProxyUriFactory;
+use App\Support\ProxyFailureSanitizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
@@ -18,7 +20,7 @@ use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
 use Throwable;
 
-class CheckProxyStatusJob implements ShouldQueue, ShouldBeUnique
+class CheckProxyStatusJob implements ShouldBeUnique, ShouldQueue
 {
     use Dispatchable;
     use InteractsWithQueue;
@@ -34,6 +36,7 @@ class CheckProxyStatusJob implements ShouldQueue, ShouldBeUnique
     public function __construct(
         public readonly int $proxyId,
         public readonly ProxyCheckSource $source = ProxyCheckSource::Auto,
+        public readonly ?string $checkGeneration = null,
     ) {
         $this->uniqueFor = (int) config('proxy-manager.check.unique_for_seconds');
         $this->onQueue((string) config('proxy-manager.check.queue'));
@@ -41,7 +44,7 @@ class CheckProxyStatusJob implements ShouldQueue, ShouldBeUnique
 
     public function uniqueId(): string
     {
-        return 'proxy:'.$this->proxyId;
+        return 'proxy:'.$this->proxyId.':'.($this->checkGeneration ?? 'legacy');
     }
 
     public function handle(ProxyCheckerInterface $checker, ApplyProxyCheckResultAction $applyResult): void
@@ -52,14 +55,20 @@ class CheckProxyStatusJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
-        $proxy->forceFill([
-            'status' => ProxyStatus::Checking,
-            'checking_started_at' => now(),
-        ])->save();
+        if (! $this->isCurrentGeneration($proxy)) {
+            return;
+        }
+
+        if ($this->checkGeneration === null) {
+            $proxy->forceFill([
+                'status' => ProxyStatus::Checking,
+                'checking_started_at' => now(),
+            ])->save();
+        }
 
         $result = $checker->check($proxy->refresh());
 
-        $applyResult->execute($proxy, $result, $this->source);
+        $applyResult->execute($proxy, $result, $this->source, $this->checkGeneration);
     }
 
     public function failed(Throwable $exception): void
@@ -70,8 +79,14 @@ class CheckProxyStatusJob implements ShouldQueue, ShouldBeUnique
             return;
         }
 
+        if (! $this->isCurrentGeneration($proxy)) {
+            return;
+        }
+
         $finishedAt = CarbonImmutable::now();
         $startedAt = $proxy->checking_started_at?->toImmutable() ?? $finishedAt;
+        $proxyUri = app(ProxyUriFactory::class)->make($proxy);
+        $errorMessage = app(ProxyFailureSanitizer::class)->sanitize($exception->getMessage(), $proxy, $proxyUri);
 
         app(ApplyProxyCheckResultAction::class)->execute(
             $proxy,
@@ -82,9 +97,19 @@ class CheckProxyStatusJob implements ShouldQueue, ShouldBeUnique
                 null,
                 null,
                 ProxyCheckErrorCode::UnexpectedError,
-                $exception->getMessage(),
+                $errorMessage,
             ),
             $this->source,
+            $this->checkGeneration,
         );
+    }
+
+    private function isCurrentGeneration(ProxyServer $proxy): bool
+    {
+        if ($this->checkGeneration !== null) {
+            return $proxy->check_generation === $this->checkGeneration;
+        }
+
+        return blank($proxy->check_generation);
     }
 }

@@ -6,6 +6,7 @@ use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
+use App\Support\ProxyFailureSanitizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
@@ -13,8 +14,13 @@ use Throwable;
 
 class LaravelHttpProxyChecker implements ProxyCheckerInterface
 {
-    public function __construct(private readonly ProxyUriFactory $uriFactory)
-    {
+    private ProxyFailureSanitizer $failureSanitizer;
+
+    public function __construct(
+        private readonly ProxyUriFactory $uriFactory,
+        ?ProxyFailureSanitizer $failureSanitizer = null,
+    ) {
+        $this->failureSanitizer = $failureSanitizer ?? new ProxyFailureSanitizer;
     }
 
     public function check(ProxyServer $proxy): ProxyCheckResult
@@ -92,7 +98,7 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
             (int) round((hrtime(true) - $started) / 1_000_000),
             null,
             $code,
-            $this->sanitize($message, $proxy, $proxyUri),
+            $this->failureSanitizer->sanitize($message, $proxy, $proxyUri),
         );
     }
 
@@ -107,32 +113,5 @@ class LaravelHttpProxyChecker implements ProxyCheckerInterface
             str_contains($message, 'could not resolve') || str_contains($message, 'name lookup') => ProxyCheckErrorCode::DnsError,
             default => ProxyCheckErrorCode::ConnectionFailed,
         };
-    }
-
-    private function sanitize(string $message, ProxyServer $proxy, string $proxyUri): string
-    {
-        $redactions = [$proxyUri];
-
-        foreach ([$proxy->username, $proxy->password] as $credential) {
-            if (! filled($credential)) {
-                continue;
-            }
-
-            $redactions[] = (string) $credential;
-            $redactions[] = rawurlencode((string) $credential);
-        }
-
-        foreach (array_unique($redactions) as $redaction) {
-            if ($redaction === '') {
-                continue;
-            }
-
-            $message = str_replace($redaction, '***', $message);
-        }
-
-        $message = preg_replace('/:\/\/[^@\s]*@/', '://***@', $message) ?? $message;
-        $message = preg_replace('/(^|\s)[^\s:\/]+:[^\s@]+@/', '$1***@', $message) ?? $message;
-
-        return mb_strimwidth($message, 0, 500, '');
     }
 }

@@ -6,24 +6,36 @@ use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
+use App\Support\ProxyFailureSanitizer;
 use Illuminate\Support\Facades\DB;
 
 class ApplyProxyCheckResultAction
 {
-    public function execute(ProxyServer $proxy, ProxyCheckResult $result, ProxyCheckSource $source): void
-    {
-        DB::transaction(function () use ($proxy, $result, $source): void {
+    public function __construct(private readonly ProxyFailureSanitizer $failureSanitizer) {}
+
+    public function execute(
+        ProxyServer $proxy,
+        ProxyCheckResult $result,
+        ProxyCheckSource $source,
+        ?string $expectedGeneration = null,
+    ): void {
+        DB::transaction(function () use ($proxy, $result, $source, $expectedGeneration): void {
             /** @var ProxyServer $lockedProxy */
             $lockedProxy = ProxyServer::query()
                 ->lockForUpdate()
                 ->findOrFail($proxy->id);
 
-            $errorMessage = $this->sanitize($result->errorMessage);
+            if ($expectedGeneration !== null && $lockedProxy->check_generation !== $expectedGeneration) {
+                return;
+            }
+
+            $errorMessage = $this->failureSanitizer->sanitize($result->errorMessage, $lockedProxy);
             $failureReason = $this->failureReason($result, $errorMessage);
 
             $lockedProxy->forceFill([
                 'status' => $result->status,
                 'checking_started_at' => null,
+                'check_generation' => null,
                 'last_checked_at' => $result->finishedAt,
                 'response_time_ms' => $result->responseTimeMs,
                 'failure_reason' => $result->status === ProxyStatus::Offline ? $failureReason : null,
@@ -55,17 +67,5 @@ class ApplyProxyCheckResultAction
         }
 
         return $result->errorCode?->value ?? 'Proxy check failed.';
-    }
-
-    private function sanitize(?string $message): ?string
-    {
-        if (! filled($message)) {
-            return null;
-        }
-
-        $sanitized = preg_replace('/:\/\/[^\s\/@]+@/u', '://***@', (string) $message) ?? (string) $message;
-        $sanitized = preg_replace('/(^|\s)(?![a-z][a-z0-9+.-]*:\/\/)[^\s:\/]+:[^\s@]+@/ui', '$1***@', $sanitized) ?? $sanitized;
-
-        return mb_strimwidth($sanitized, 0, 500, '');
     }
 }
