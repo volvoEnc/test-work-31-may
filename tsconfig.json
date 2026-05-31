@@ -13,5 +13,12 @@
     "strict": true,
     "types": ["vite/client", "vitest/globals", "vitest/config"]
   },
-  "include": ["resources/js/**/*.ts", "vite.config.ts"]
+  "include": [
+    "resources/js/**/*.ts",
+    "resources/js/**/*.tsx",
+    "resources/js/**/*.vue",
+    "resources/js/**/*.d.ts",
+    "tests/**/*.ts",
+    "vite.config.ts"
+  ]
 }

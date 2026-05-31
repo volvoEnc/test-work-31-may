@@ -1,7 +1,12 @@
 {
     "$schema": "https://www.schemastore.org/package.json",
+    "name": "proxy-manager",
     "private": true,
     "type": "module",
+    "engines": {
+        "node": ">=22.12.0",
+        "npm": ">=10.0.0"
+    },
     "scripts": {
         "dev": "vite",
         "build": "vue-tsc --noEmit && vite build",
@@ -16,13 +21,13 @@
         "jsdom": "^29.1.1",
         "laravel-vite-plugin": "^2.0.0",
         "tailwindcss": "^4.0.0",
+        "@vitejs/plugin-vue": "^6.0.7",
         "typescript": "^6.0.3",
         "vite": "^7.0.7",
         "vitest": "^4.1.7",
         "vue-tsc": "^3.3.3"
     },
     "dependencies": {
-        "@vitejs/plugin-vue": "^6.0.7",
         "vue": "^3.5.35"
     }
 }
