@@ -1,3 +1,14 @@
+x-php-service: &php-service
+    build:
+      context: .
+      dockerfile: docker/php/Dockerfile
+    working_dir: /var/www/html
+    volumes:
+      - .:/var/www/html
+    depends_on:
+      mysql:
+        condition: service_healthy
+
 services:
   nginx:
     image: nginx:1.27-alpine
@@ -9,49 +20,31 @@ services:
     depends_on:
       - php-fpm
 
+  setup:
+    <<: *php-service
+    command: sh -lc "composer install && (test -f .env || cp .env.example .env) && php artisan key:generate --force && php artisan migrate --force"
+
   php-fpm:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    working_dir: /var/www/html
-    volumes:
-      - .:/var/www/html
-    depends_on:
-      mysql:
-        condition: service_healthy
+    <<: *php-service
+    command: sh -lc "until [ -f vendor/autoload.php ] && [ -f .env ]; do echo 'Waiting for composer install and .env'; sleep 2; done; php-fpm"
 
   queue:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    working_dir: /var/www/html
-    command: php artisan queue:work database --queue=proxy-checks,default --sleep=1 --tries=1 --timeout=30
-    volumes:
-      - .:/var/www/html
-    depends_on:
-      mysql:
-        condition: service_healthy
+    <<: *php-service
+    command: sh -lc "until [ -f vendor/autoload.php ] && [ -f .env ] && php artisan migrate:status >/dev/null 2>&1; do echo 'Waiting for application setup and migrations'; sleep 2; done; php artisan queue:work database --queue=proxy-checks,default --sleep=1 --tries=1 --timeout=30"
 
   scheduler:
-    build:
-      context: .
-      dockerfile: docker/php/Dockerfile
-    working_dir: /var/www/html
-    command: php artisan schedule:work
-    volumes:
-      - .:/var/www/html
-    depends_on:
-      mysql:
-        condition: service_healthy
+    <<: *php-service
+    command: sh -lc "until [ -f vendor/autoload.php ] && [ -f .env ] && php artisan migrate:status >/dev/null 2>&1; do echo 'Waiting for application setup and migrations'; sleep 2; done; php artisan schedule:work"
 
   node-vite:
     image: node:22-alpine
     working_dir: /var/www/html
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    command: sh -lc "if [ ! -d node_modules/.bin ]; then if [ -f package-lock.json ]; then npm ci; else npm install; fi; fi; npm run dev -- --host 0.0.0.0"
     ports:
       - "5173:5173"
     volumes:
       - .:/var/www/html
+      - node-modules:/var/www/html/node_modules
     depends_on:
       - nginx
 
@@ -74,3 +67,4 @@ services:
 
 volumes:
   mysql-data:
+  node-modules:
