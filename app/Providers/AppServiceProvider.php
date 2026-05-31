@@ -13,7 +13,5 @@ class AppServiceProvider extends ServiceProvider
         $this->app->bind(ProxyCheckerInterface::class, LaravelHttpProxyChecker::class);
     }
 
-    public function boot(): void
-    {
-    }
+    public function boot(): void {}
 }

@@ -15,42 +15,17 @@ use App\Http\Requests\Proxy\StoreProxyRequest;
 use App\Http\Requests\Proxy\UpdateProxyRequest;
 use App\Http\Resources\ProxyResource;
 use App\Models\ProxyServer;
+use App\Queries\ProxyIndexQuery;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 use Illuminate\Http\Response;
 
 class ProxyController extends Controller
 {
-    public function index(IndexProxyRequest $request): AnonymousResourceCollection
+    public function index(IndexProxyRequest $request, ProxyIndexQuery $proxies): AnonymousResourceCollection
     {
-        $validated = $request->validated();
-        $perPage = (int) ($validated['per_page'] ?? 20);
-        $sort = $validated['sort'] ?? 'created_at';
-        $direction = $validated['direction'] ?? 'desc';
-
-        $query = ProxyServer::query();
-
-        if (filled($validated['search'] ?? null)) {
-            $search = '%'.str_replace(['\\', '%', '_'], ['\\\\', '\\%', '\\_'], $validated['search']).'%';
-
-            $query->where(function ($query) use ($search): void {
-                $query
-                    ->where('name', 'like', $search)
-                    ->orWhere('host', 'like', $search)
-                    ->orWhere('username', 'like', $search);
-            });
-        }
-
-        if (filled($validated['status'] ?? null)) {
-            $query->where('status', $validated['status']);
-        }
-
-        if (filled($validated['scheme'] ?? null)) {
-            $query->where('scheme', $validated['scheme']);
-        }
-
         return ProxyResource::collection(
-            $query->orderBy($sort, $direction)->paginate($perPage)
+            $proxies->paginate($request->validated())
         );
     }
 

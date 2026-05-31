@@ -7,15 +7,17 @@ use App\Enums\ProxyStatus;
 use App\Exceptions\DuplicateProxyException;
 use App\Models\ProxyServer;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 class UpdateProxyAction
 {
     private const SENSITIVE_KEYS = ['scheme', 'host', 'port', 'username', 'password'];
 
-    public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck)
-    {
-    }
+    public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck) {}
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public function execute(ProxyServer $proxy, array $data): ProxyServer
     {
         $sensitiveChanged = $this->hasSensitiveKey($data);
@@ -37,23 +39,28 @@ class UpdateProxyAction
             $data['failure_reason'] = null;
         }
 
-        try {
-            $proxy->fill($data)->save();
-        } catch (QueryException $exception) {
-            if ($this->isUniqueConstraintViolation($exception)) {
-                throw new DuplicateProxyException();
+        return DB::transaction(function () use ($proxy, $data, $sensitiveChanged): ProxyServer {
+            try {
+                $proxy->fill($data)->save();
+            } catch (QueryException $exception) {
+                if ($this->isUniqueConstraintViolation($exception)) {
+                    throw new DuplicateProxyException;
+                }
+
+                throw $exception;
             }
 
-            throw $exception;
-        }
+            if ($sensitiveChanged) {
+                $this->scheduleProxyCheck->execute($proxy, ProxyCheckSource::Manual);
+            }
 
-        if ($sensitiveChanged) {
-            $this->scheduleProxyCheck->execute($proxy, ProxyCheckSource::Manual);
-        }
-
-        return $proxy->refresh();
+            return $proxy->refresh();
+        });
     }
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     private function hasSensitiveKey(array $data): bool
     {
         foreach (self::SENSITIVE_KEYS as $key) {

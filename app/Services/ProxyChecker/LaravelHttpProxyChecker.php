@@ -14,14 +14,10 @@ use Throwable;
 
 class LaravelHttpProxyChecker implements ProxyCheckerInterface
 {
-    private ProxyFailureSanitizer $failureSanitizer;
-
     public function __construct(
         private readonly ProxyUriFactory $uriFactory,
-        ?ProxyFailureSanitizer $failureSanitizer = null,
-    ) {
-        $this->failureSanitizer = $failureSanitizer ?? new ProxyFailureSanitizer;
-    }
+        private readonly ProxyFailureSanitizer $failureSanitizer,
+    ) {}
 
     public function check(ProxyServer $proxy): ProxyCheckResult
     {

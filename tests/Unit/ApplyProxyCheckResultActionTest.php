@@ -6,7 +6,6 @@ use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
-use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
@@ -21,8 +20,7 @@ class ApplyProxyCheckResultActionTest extends TestCase
     public function test_it_updates_proxy_and_creates_online_history(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
-        $proxy = $this->createProxyServer([
-            'status' => ProxyStatus::Checking,
+        $proxy = ProxyServer::factory()->checking()->create([
             'checking_started_at' => now()->subSecond(),
             'failure_reason' => 'Previous failure.',
         ]);
@@ -63,8 +61,7 @@ class ApplyProxyCheckResultActionTest extends TestCase
 
     public function test_it_sanitizes_offline_failure_messages_before_persisting(): void
     {
-        $proxy = $this->createProxyServer([
-            'status' => ProxyStatus::Checking,
+        $proxy = ProxyServer::factory()->checking()->create([
             'username' => 'raw-user',
             'password' => 'raw-pass',
             'checking_started_at' => now()->subMinute(),
@@ -96,8 +93,7 @@ class ApplyProxyCheckResultActionTest extends TestCase
 
     public function test_guarded_stale_expected_generation_does_not_overwrite_proxy_or_create_history(): void
     {
-        $proxy = $this->createProxyServer([
-            'status' => ProxyStatus::Checking,
+        $proxy = ProxyServer::factory()->checking()->create([
             'checking_started_at' => now()->subMinute(),
             'check_generation' => 'new-generation',
             'last_checked_at' => null,
@@ -132,8 +128,7 @@ class ApplyProxyCheckResultActionTest extends TestCase
 
     public function test_guarded_null_expected_generation_does_not_apply_after_proxy_receives_generation(): void
     {
-        $proxy = $this->createProxyServer([
-            'status' => ProxyStatus::Checking,
+        $proxy = ProxyServer::factory()->checking()->create([
             'checking_started_at' => now()->subMinute(),
             'check_generation' => 'new-generation',
             'last_checked_at' => null,
@@ -163,27 +158,5 @@ class ApplyProxyCheckResultActionTest extends TestCase
         $this->assertNull($proxy->last_checked_at);
         $this->assertNull($proxy->response_time_ms);
         $this->assertSame(0, ProxyCheck::query()->count());
-    }
-
-    private function createProxyServer(array $overrides = []): ProxyServer
-    {
-        $attributes = array_merge([
-            'scheme' => ProxyScheme::Http,
-            'host' => 'example.com',
-            'port' => 8080,
-            'username' => null,
-            'password' => null,
-            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'example.com', 8080, null),
-            'status' => ProxyStatus::Unknown,
-        ], $overrides);
-
-        $attributes['identity_hash'] = ProxyServer::identityHashFor(
-            $attributes['scheme'],
-            $attributes['host'],
-            (int) $attributes['port'],
-            $attributes['username'],
-        );
-
-        return ProxyServer::create($attributes);
     }
 }

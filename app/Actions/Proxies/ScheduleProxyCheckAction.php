@@ -20,6 +20,6 @@ class ScheduleProxyCheckAction
             'check_generation' => $checkGeneration,
         ])->save();
 
-        CheckProxyStatusJob::dispatch($proxy->id, $source, $checkGeneration);
+        CheckProxyStatusJob::dispatch($proxy->id, $source, $checkGeneration)->afterCommit();
     }
 }

@@ -7,7 +7,6 @@ use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
-use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Jobs\CheckProxyStatusJob;
 use App\Jobs\DispatchDueProxyChecksJob;
@@ -31,9 +30,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'proxy-manager.check.interval_minutes' => 5,
         ]);
         Bus::fake();
-        $staleProxy = $this->createProxyServer([
+        $staleProxy = ProxyServer::factory()->checking()->create([
             'host' => 'stale.example.com',
-            'status' => ProxyStatus::Checking,
             'checking_started_at' => now()->subSeconds(121),
             'last_checked_at' => now()->subHour(),
         ]);
@@ -66,24 +64,21 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'proxy-manager.check.interval_minutes' => 5,
         ]);
         Bus::fake();
-        $neverChecked = $this->createProxyServer([
+        $neverChecked = ProxyServer::factory()->create([
             'host' => 'never.example.com',
             'last_checked_at' => null,
             'status' => ProxyStatus::Unknown,
         ]);
-        $dueProxy = $this->createProxyServer([
+        $dueProxy = ProxyServer::factory()->online()->create([
             'host' => 'due.example.com',
             'last_checked_at' => now()->subMinutes(6),
-            'status' => ProxyStatus::Online,
         ]);
-        $freshProxy = $this->createProxyServer([
+        $freshProxy = ProxyServer::factory()->online()->create([
             'host' => 'fresh.example.com',
             'last_checked_at' => now()->subMinute(),
-            'status' => ProxyStatus::Online,
         ]);
-        $checkingProxy = $this->createProxyServer([
+        $checkingProxy = ProxyServer::factory()->checking()->create([
             'host' => 'checking.example.com',
-            'status' => ProxyStatus::Checking,
             'checking_started_at' => now()->subSeconds(30),
             'last_checked_at' => now()->subHour(),
         ]);
@@ -117,9 +112,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'proxy-manager.check.interval_minutes' => 5,
         ]);
         Bus::fake();
-        $staleProxy = $this->createProxyServer([
+        $staleProxy = ProxyServer::factory()->checking()->create([
             'host' => 'stale-race.example.com',
-            'status' => ProxyStatus::Checking,
             'checking_started_at' => now()->subSeconds(121),
             'check_generation' => 'stale-generation',
             'last_checked_at' => now()->subHour(),
@@ -153,27 +147,5 @@ class DispatchDueProxyChecksJobTest extends TestCase
         $this->assertNull($staleProxy->failure_reason);
         $this->assertSame(0, ProxyCheck::query()->count());
         Bus::assertNotDispatched(CheckProxyStatusJob::class);
-    }
-
-    private function createProxyServer(array $overrides = []): ProxyServer
-    {
-        $attributes = array_merge([
-            'scheme' => ProxyScheme::Http,
-            'host' => 'example.com',
-            'port' => 8080,
-            'username' => null,
-            'password' => null,
-            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'example.com', 8080, null),
-            'status' => ProxyStatus::Unknown,
-        ], $overrides);
-
-        $attributes['identity_hash'] = ProxyServer::identityHashFor(
-            $attributes['scheme'],
-            $attributes['host'],
-            (int) $attributes['port'],
-            $attributes['username'],
-        );
-
-        return ProxyServer::create($attributes);
     }
 }

@@ -3,15 +3,11 @@
 namespace App\Jobs;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
-use App\Data\ProxyCheckResult;
-use App\Enums\ProxyCheckErrorCode;
+use App\Actions\Proxies\RecordFailedProxyCheckAction;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
 use App\Services\ProxyChecker\ProxyCheckerInterface;
-use App\Services\ProxyChecker\ProxyUriFactory;
-use App\Support\ProxyFailureSanitizer;
-use Carbon\CarbonImmutable;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldBeUnique;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -73,35 +69,11 @@ class CheckProxyStatusJob implements ShouldBeUnique, ShouldQueue
 
     public function failed(Throwable $exception): void
     {
-        $proxy = ProxyServer::query()->find($this->proxyId);
-
-        if (! $proxy instanceof ProxyServer) {
-            return;
-        }
-
-        if (! $this->isCurrentGeneration($proxy)) {
-            return;
-        }
-
-        $finishedAt = CarbonImmutable::now();
-        $startedAt = $proxy->checking_started_at?->toImmutable() ?? $finishedAt;
-        $proxyUri = app(ProxyUriFactory::class)->make($proxy);
-        $errorMessage = app(ProxyFailureSanitizer::class)->sanitize($exception->getMessage(), $proxy, $proxyUri);
-
-        app(ApplyProxyCheckResultAction::class)->execute(
-            $proxy,
-            new ProxyCheckResult(
-                ProxyStatus::Offline,
-                $startedAt,
-                $finishedAt,
-                null,
-                null,
-                ProxyCheckErrorCode::UnexpectedError,
-                $errorMessage,
-            ),
+        app(RecordFailedProxyCheckAction::class)->execute(
+            $this->proxyId,
             $this->source,
             $this->checkGeneration,
-            true,
+            $exception,
         );
     }
 

@@ -9,7 +9,7 @@ Artisan::command('inspire', function () {
     $this->comment(Inspiring::quote());
 })->purpose('Display an inspiring quote');
 
-Schedule::job(new DispatchDueProxyChecksJob(), (string) config('proxy-manager.check.queue'))
+Schedule::job(new DispatchDueProxyChecksJob, (string) config('proxy-manager.check.queue'))
     ->name('proxy-manager:dispatch-due-checks')
     ->everyFiveMinutes()
     ->withoutOverlapping(10)

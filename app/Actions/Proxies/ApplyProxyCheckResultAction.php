@@ -3,6 +3,7 @@
 namespace App\Actions\Proxies;
 
 use App\Data\ProxyCheckResult;
+use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
@@ -67,6 +68,10 @@ class ApplyProxyCheckResultAction
             return $errorMessage;
         }
 
-        return $result->errorCode?->value ?? 'Proxy check failed.';
+        if ($result->errorCode instanceof ProxyCheckErrorCode) {
+            return $result->errorCode->value;
+        }
+
+        return 'Proxy check failed.';
     }
 }

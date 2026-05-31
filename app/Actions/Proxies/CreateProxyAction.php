@@ -7,12 +7,11 @@ use App\Enums\ProxyStatus;
 use App\Exceptions\DuplicateProxyException;
 use App\Models\ProxyServer;
 use Illuminate\Database\QueryException;
+use Illuminate\Support\Facades\DB;
 
 class CreateProxyAction
 {
-    public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck)
-    {
-    }
+    public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck) {}
 
     public function execute(array $data): ProxyServer
     {
@@ -24,19 +23,21 @@ class CreateProxyAction
         );
         $data['status'] = ProxyStatus::Unknown;
 
-        try {
-            $proxy = ProxyServer::create($data);
-        } catch (QueryException $exception) {
-            if ($this->isUniqueConstraintViolation($exception)) {
-                throw new DuplicateProxyException();
+        return DB::transaction(function () use ($data): ProxyServer {
+            try {
+                $proxy = ProxyServer::create($data);
+            } catch (QueryException $exception) {
+                if ($this->isUniqueConstraintViolation($exception)) {
+                    throw new DuplicateProxyException;
+                }
+
+                throw $exception;
             }
 
-            throw $exception;
-        }
+            $this->scheduleProxyCheck->execute($proxy, ProxyCheckSource::Manual);
 
-        $this->scheduleProxyCheck->execute($proxy, ProxyCheckSource::Manual);
-
-        return $proxy->refresh();
+            return $proxy->refresh();
+        });
     }
 
     private function isUniqueConstraintViolation(QueryException $exception): bool

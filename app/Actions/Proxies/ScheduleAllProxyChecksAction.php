@@ -7,9 +7,7 @@ use App\Models\ProxyServer;
 
 class ScheduleAllProxyChecksAction
 {
-    public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck)
-    {
-    }
+    public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck) {}
 
     public function execute(ProxyCheckSource $source = ProxyCheckSource::Manual): int
     {

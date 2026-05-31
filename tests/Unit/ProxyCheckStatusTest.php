@@ -3,7 +3,6 @@
 namespace Tests\Unit;
 
 use App\Enums\ProxyCheckSource;
-use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
@@ -19,7 +18,7 @@ class ProxyCheckStatusTest extends TestCase
 
     public function test_it_saves_online_check_status(): void
     {
-        $proxyServer = $this->createProxyServer();
+        $proxyServer = ProxyServer::factory()->create();
 
         $check = ProxyCheck::create([
             'proxy_server_id' => $proxyServer->id,
@@ -35,7 +34,7 @@ class ProxyCheckStatusTest extends TestCase
 
     public function test_it_rejects_checking_check_status(): void
     {
-        $proxyServer = $this->createProxyServer();
+        $proxyServer = ProxyServer::factory()->create();
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proxy check status must be online or offline.');
@@ -51,7 +50,7 @@ class ProxyCheckStatusTest extends TestCase
 
     public function test_it_rejects_unknown_check_status(): void
     {
-        $proxyServer = $this->createProxyServer();
+        $proxyServer = ProxyServer::factory()->create();
 
         $this->expectException(InvalidArgumentException::class);
         $this->expectExceptionMessage('Proxy check status must be online or offline.');
@@ -67,7 +66,7 @@ class ProxyCheckStatusTest extends TestCase
 
     public function test_database_rejects_invalid_check_status_when_bypassing_eloquent(): void
     {
-        $proxyServer = $this->createProxyServer();
+        $proxyServer = ProxyServer::factory()->create();
 
         $this->expectException(QueryException::class);
 
@@ -79,17 +78,6 @@ class ProxyCheckStatusTest extends TestCase
             'finished_at' => now(),
             'created_at' => now(),
             'updated_at' => now(),
-        ]);
-    }
-
-    private function createProxyServer(): ProxyServer
-    {
-        return ProxyServer::create([
-            'scheme' => ProxyScheme::Http,
-            'host' => 'example.com',
-            'port' => 8080,
-            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'example.com', 8080, null),
-            'status' => ProxyStatus::Unknown,
         ]);
     }
 }

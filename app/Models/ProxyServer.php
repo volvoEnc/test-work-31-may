@@ -4,10 +4,28 @@ namespace App\Models;
 
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
 
+/**
+ * @property int $id
+ * @property string|null $name
+ * @property ProxyScheme $scheme
+ * @property string $host
+ * @property int $port
+ * @property string|null $username
+ * @property string|null $password
+ * @property string $identity_hash
+ * @property ProxyStatus $status
+ * @property CarbonImmutable|null $checking_started_at
+ * @property string|null $check_generation
+ * @property CarbonImmutable|null $last_checked_at
+ * @property CarbonImmutable|null $last_success_at
+ * @property int|null $response_time_ms
+ * @property string|null $failure_reason
+ */
 class ProxyServer extends Model
 {
     use HasFactory;

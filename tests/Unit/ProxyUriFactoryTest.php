@@ -41,13 +41,12 @@ class ProxyUriFactoryTest extends TestCase
 
     public function test_it_builds_proxy_uri_with_persisted_encrypted_password(): void
     {
-        $proxy = ProxyServer::create([
+        $proxy = ProxyServer::factory()->create([
             'scheme' => ProxyScheme::Http,
             'host' => 'proxy.example',
             'port' => 8080,
             'username' => 'user',
             'password' => 'persisted p@ss',
-            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'proxy.example', 8080, 'user'),
         ]);
 
         $reloadedProxy = ProxyServer::findOrFail($proxy->id);

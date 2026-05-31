@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
@@ -10,6 +11,8 @@ use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Assert;
 use Tests\TestCase;
 
 class ProxyApiTest extends TestCase
@@ -18,7 +21,7 @@ class ProxyApiTest extends TestCase
 
     public function test_it_returns_paginated_proxy_list(): void
     {
-        $this->createProxyServer(['host' => 'list.example.com']);
+        ProxyServer::factory()->create(['host' => 'list.example.com']);
 
         $response = $this->getJson('/api/v1/proxies');
 
@@ -33,20 +36,17 @@ class ProxyApiTest extends TestCase
 
     public function test_it_filters_proxy_list_by_status_and_scheme(): void
     {
-        $this->createProxyServer([
+        ProxyServer::factory()->online()->create([
             'host' => 'http-online.example.com',
             'scheme' => ProxyScheme::Http,
-            'status' => ProxyStatus::Online,
         ]);
-        $this->createProxyServer([
+        ProxyServer::factory()->offline()->create([
             'host' => 'http-offline.example.com',
             'scheme' => ProxyScheme::Http,
-            'status' => ProxyStatus::Offline,
         ]);
-        $this->createProxyServer([
+        ProxyServer::factory()->online()->create([
             'host' => 'socks-online.example.com',
             'scheme' => ProxyScheme::Socks5,
-            'status' => ProxyStatus::Online,
         ]);
 
         $response = $this->getJson('/api/v1/proxies?status=online&scheme=http');
@@ -61,10 +61,10 @@ class ProxyApiTest extends TestCase
 
     public function test_it_searches_proxy_list_by_name_host_and_username(): void
     {
-        $this->createProxyServer(['name' => 'Named Gateway', 'host' => 'name.example.com']);
-        $this->createProxyServer(['host' => 'needle-host.example.com']);
-        $this->createProxyServer(['host' => 'user.example.com', 'username' => 'needle-user']);
-        $this->createProxyServer(['host' => 'miss.example.com']);
+        ProxyServer::factory()->create(['name' => 'Named Gateway', 'host' => 'name.example.com']);
+        ProxyServer::factory()->create(['host' => 'needle-host.example.com']);
+        ProxyServer::factory()->create(['host' => 'user.example.com', 'username' => 'needle-user']);
+        ProxyServer::factory()->create(['host' => 'miss.example.com']);
 
         $nameResponse = $this->getJson('/api/v1/proxies?search=Gateway');
         $hostResponse = $this->getJson('/api/v1/proxies?search=needle-host');
@@ -86,14 +86,12 @@ class ProxyApiTest extends TestCase
 
     public function test_it_allows_expected_sort_fields_and_directions(): void
     {
-        $this->createProxyServer([
+        ProxyServer::factory()->offline()->create([
             'host' => 'beta.example.com',
-            'status' => ProxyStatus::Offline,
             'last_checked_at' => now()->subHour(),
         ]);
-        $this->createProxyServer([
+        ProxyServer::factory()->online()->create([
             'host' => 'alpha.example.com',
-            'status' => ProxyStatus::Online,
             'last_checked_at' => now(),
         ]);
 
@@ -140,7 +138,7 @@ class ProxyApiTest extends TestCase
     public function test_it_returns_pagination_metadata_and_respects_page_size(): void
     {
         for ($index = 1; $index <= 15; $index++) {
-            $this->createProxyServer([
+            ProxyServer::factory()->create([
                 'host' => "page-{$index}.example.com",
             ]);
         }
@@ -177,14 +175,37 @@ class ProxyApiTest extends TestCase
             ->assertJsonMissingPath('data.identity_hash')
             ->assertJsonMissingPath('data.check_generation');
 
-        Bus::assertDispatched(CheckProxyStatusJob::class);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
+    }
+
+    public function test_create_schedules_initial_check_inside_database_transaction(): void
+    {
+        $expectedTransactionLevel = DB::transactionLevel() + 1;
+
+        $this->app->instance(ScheduleProxyCheckAction::class, new class($expectedTransactionLevel) extends ScheduleProxyCheckAction
+        {
+            public function __construct(private readonly int $expectedTransactionLevel) {}
+
+            public function execute(ProxyServer $proxy, ProxyCheckSource $source): void
+            {
+                Assert::assertSame(ProxyCheckSource::Manual, $source);
+                Assert::assertGreaterThanOrEqual($this->expectedTransactionLevel, DB::transactionLevel());
+            }
+        });
+
+        $this->postJson('/api/v1/proxies', [
+            'name' => 'Transactional',
+            'scheme' => 'http',
+            'host' => 'transactional-create.example.com',
+            'port' => 8080,
+        ])->assertCreated();
     }
 
     public function test_it_rejects_duplicate_proxy_identity(): void
     {
         Bus::fake();
 
-        $this->createProxyServer([
+        ProxyServer::factory()->create([
             'scheme' => ProxyScheme::Http,
             'host' => 'duplicate.example.com',
             'port' => 8080,
@@ -208,13 +229,13 @@ class ProxyApiTest extends TestCase
     public function test_it_rejects_duplicate_proxy_identity_on_update(): void
     {
         Bus::fake();
-        $this->createProxyServer([
+        ProxyServer::factory()->create([
             'scheme' => ProxyScheme::Http,
             'host' => 'duplicate-update.example.com',
             'port' => 8080,
             'username' => 'same-user',
         ]);
-        $proxy = $this->createProxyServer([
+        $proxy = ProxyServer::factory()->create([
             'scheme' => ProxyScheme::Socks5,
             'host' => 'unique-update.example.com',
             'port' => 1080,
@@ -239,10 +260,9 @@ class ProxyApiTest extends TestCase
     public function test_it_updates_proxy_fields_and_queues_check_when_sensitive_data_changes(): void
     {
         Bus::fake();
-        $proxy = $this->createProxyServer([
+        $proxy = ProxyServer::factory()->online()->create([
             'name' => 'Old',
             'port' => 8080,
-            'status' => ProxyStatus::Online,
         ]);
 
         $response = $this->patchJson("/api/v1/proxies/{$proxy->id}", [
@@ -259,13 +279,13 @@ class ProxyApiTest extends TestCase
             ->assertJsonMissingPath('data.identity_hash')
             ->assertJsonMissingPath('data.check_generation');
 
-        Bus::assertDispatched(CheckProxyStatusJob::class);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
     }
 
     public function test_it_preserves_password_when_omitted_from_update(): void
     {
         Bus::fake();
-        $proxy = $this->createProxyServer(['password' => 'keep-me']);
+        $proxy = ProxyServer::factory()->create(['password' => 'keep-me']);
 
         $this->patchJson("/api/v1/proxies/{$proxy->id}", [
             'name' => 'Renamed',
@@ -278,7 +298,7 @@ class ProxyApiTest extends TestCase
     public function test_it_clears_password_when_password_is_null(): void
     {
         Bus::fake();
-        $proxy = $this->createProxyServer(['password' => 'clear-me']);
+        $proxy = ProxyServer::factory()->create(['password' => 'clear-me']);
 
         $this->patchJson("/api/v1/proxies/{$proxy->id}", [
             'password' => null,
@@ -286,12 +306,12 @@ class ProxyApiTest extends TestCase
             ->assertJsonPath('data.status', 'checking');
 
         $this->assertNull($proxy->refresh()->password);
-        Bus::assertDispatched(CheckProxyStatusJob::class);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
     }
 
     public function test_it_deletes_proxy_and_cascades_checks(): void
     {
-        $proxy = $this->createProxyServer();
+        $proxy = ProxyServer::factory()->create();
         ProxyCheck::create([
             'proxy_server_id' => $proxy->id,
             'source' => ProxyCheckSource::Manual,
@@ -310,7 +330,7 @@ class ProxyApiTest extends TestCase
     public function test_it_queues_manual_check_for_one_proxy(): void
     {
         Bus::fake();
-        $proxy = $this->createProxyServer(['status' => ProxyStatus::Online]);
+        $proxy = ProxyServer::factory()->online()->create();
 
         $response = $this->postJson("/api/v1/proxies/{$proxy->id}/check");
 
@@ -320,13 +340,13 @@ class ProxyApiTest extends TestCase
             ->assertJsonPath('data.status', 'checking')
             ->assertJsonPath('data.queued', true);
 
-        Bus::assertDispatched(CheckProxyStatusJob::class);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
     }
 
     public function test_it_queues_manual_checks_for_all_proxies(): void
     {
         Bus::fake();
-        $this->createProxyServer(['host' => 'all.example.com']);
+        ProxyServer::factory()->create(['host' => 'all.example.com']);
 
         $response = $this->postJson('/api/v1/proxies/check');
 
@@ -335,12 +355,12 @@ class ProxyApiTest extends TestCase
             ->assertJsonPath('data.queued', true)
             ->assertJsonPath('data.candidate_count', 1);
 
-        Bus::assertDispatched(CheckProxyStatusJob::class);
+        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
     }
 
     public function test_it_returns_proxy_check_history(): void
     {
-        $proxy = $this->createProxyServer();
+        $proxy = ProxyServer::factory()->create();
         ProxyCheck::create([
             'proxy_server_id' => $proxy->id,
             'source' => ProxyCheckSource::Manual,
@@ -360,33 +380,26 @@ class ProxyApiTest extends TestCase
             ->assertJsonPath('data.0.source', 'manual');
     }
 
+    public function test_it_rejects_invalid_proxy_check_history_pagination(): void
+    {
+        $proxy = ProxyServer::factory()->create();
+
+        $invalidQueries = [
+            'page=0',
+            'per_page=9',
+            'per_page=101',
+        ];
+
+        foreach ($invalidQueries as $query) {
+            $this->getJson("/api/v1/proxies/{$proxy->id}/checks?{$query}")
+                ->assertUnprocessable();
+        }
+    }
+
     public function test_health_endpoint_returns_ok(): void
     {
         $this->getJson('/api/v1/health')
             ->assertOk()
             ->assertJsonPath('status', 'ok');
-    }
-
-    private function createProxyServer(array $overrides = []): ProxyServer
-    {
-        $attributes = array_merge([
-            'name' => null,
-            'scheme' => ProxyScheme::Http,
-            'host' => 'example.com',
-            'port' => 8080,
-            'username' => null,
-            'password' => null,
-            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'example.com', 8080, null),
-            'status' => ProxyStatus::Unknown,
-        ], $overrides);
-
-        $attributes['identity_hash'] = ProxyServer::identityHashFor(
-            $attributes['scheme'],
-            $attributes['host'],
-            (int) $attributes['port'],
-            $attributes['username'],
-        );
-
-        return ProxyServer::create($attributes);
     }
 }

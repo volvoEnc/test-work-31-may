@@ -8,6 +8,7 @@ use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
 use App\Services\ProxyChecker\LaravelHttpProxyChecker;
 use App\Services\ProxyChecker\ProxyUriFactory;
+use App\Support\ProxyFailureSanitizer;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Tests\TestCase;
@@ -29,7 +30,7 @@ class LaravelHttpProxyCheckerTest extends TestCase
             },
         ]);
 
-        $result = (new LaravelHttpProxyChecker(new ProxyUriFactory))->check($this->proxyServer());
+        $result = $this->checker()->check($this->proxyServer());
 
         $this->assertSame(ProxyStatus::Online, $result->status);
         $this->assertSame(204, $result->httpStatus);
@@ -53,7 +54,7 @@ class LaravelHttpProxyCheckerTest extends TestCase
             'https://check.example/' => fn () => throw new ConnectionException('Connection timed out after 3000 milliseconds'),
         ]);
 
-        $result = (new LaravelHttpProxyChecker(new ProxyUriFactory))->check($this->proxyServer());
+        $result = $this->checker()->check($this->proxyServer());
 
         $this->assertSame(ProxyStatus::Offline, $result->status);
         $this->assertNull($result->httpStatus);
@@ -70,7 +71,7 @@ class LaravelHttpProxyCheckerTest extends TestCase
             'https://check.example/' => Http::response('Proxy Authentication Required', 407),
         ]);
 
-        $result = (new LaravelHttpProxyChecker(new ProxyUriFactory))->check($this->proxyServer());
+        $result = $this->checker()->check($this->proxyServer());
 
         $this->assertSame(ProxyStatus::Offline, $result->status);
         $this->assertSame(407, $result->httpStatus);
@@ -91,7 +92,7 @@ class LaravelHttpProxyCheckerTest extends TestCase
             ),
         ]);
 
-        $result = (new LaravelHttpProxyChecker(new ProxyUriFactory))->check($proxy);
+        $result = $this->checker()->check($proxy);
 
         $this->assertSame(ProxyStatus::Offline, $result->status);
         $this->assertStringNotContainsString($proxyUri, $result->errorMessage);
@@ -99,6 +100,28 @@ class LaravelHttpProxyCheckerTest extends TestCase
         $this->assertStringNotContainsString('p@ss:word', $result->errorMessage);
         $this->assertStringNotContainsString('user%20name', $result->errorMessage);
         $this->assertStringNotContainsString('p%40ss%3Aword', $result->errorMessage);
+    }
+
+    public function test_container_resolved_checker_uses_bound_failure_sanitizer(): void
+    {
+        config()->set('proxy-manager.check.url', 'https://check.example/');
+
+        $this->app->bind(ProxyFailureSanitizer::class, fn (): ProxyFailureSanitizer => new class extends ProxyFailureSanitizer
+        {
+            public function sanitize(?string $message, ?ProxyServer $proxy = null, ?string $proxyUri = null): ?string
+            {
+                return 'sanitized-by-container';
+            }
+        });
+
+        Http::fake([
+            'https://check.example/' => fn () => throw new ConnectionException('raw failure details'),
+        ]);
+
+        $result = app(LaravelHttpProxyChecker::class)->check($this->proxyServer());
+
+        $this->assertSame(ProxyStatus::Offline, $result->status);
+        $this->assertSame('sanitized-by-container', $result->errorMessage);
     }
 
     private function proxyServer(?string $username = null, ?string $password = null): ProxyServer
@@ -110,5 +133,10 @@ class LaravelHttpProxyCheckerTest extends TestCase
             'username' => $username,
             'password' => $password,
         ]);
+    }
+
+    private function checker(): LaravelHttpProxyChecker
+    {
+        return app(LaravelHttpProxyChecker::class);
     }
 }

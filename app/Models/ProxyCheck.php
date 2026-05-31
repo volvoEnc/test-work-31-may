@@ -5,11 +5,24 @@ namespace App\Models;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
+use Carbon\CarbonImmutable;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use InvalidArgumentException;
 
+/**
+ * @property int $id
+ * @property int $proxy_server_id
+ * @property ProxyCheckSource $source
+ * @property ProxyStatus $status
+ * @property ProxyCheckErrorCode|null $error_code
+ * @property CarbonImmutable|null $started_at
+ * @property CarbonImmutable|null $finished_at
+ * @property int|null $response_time_ms
+ * @property int|null $http_status
+ * @property string|null $error_message
+ */
 class ProxyCheck extends Model
 {
     use HasFactory;
@@ -40,9 +53,9 @@ class ProxyCheck extends Model
     protected static function booted(): void
     {
         static::saving(function (self $check): void {
-            $status = $check->status instanceof ProxyStatus
+            $status = $check->getAttribute('status') instanceof ProxyStatus
                 ? $check->status
-                : ProxyStatus::from((string) $check->status);
+                : ProxyStatus::from((string) $check->getAttribute('status'));
 
             if (! in_array($status, [ProxyStatus::Online, ProxyStatus::Offline], true)) {
                 throw new InvalidArgumentException('Proxy check status must be online or offline.');

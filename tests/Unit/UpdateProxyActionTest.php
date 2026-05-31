@@ -2,15 +2,17 @@
 
 namespace Tests\Unit;
 
+use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Actions\Proxies\UpdateProxyAction;
 use App\Enums\ProxyCheckSource;
-use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Jobs\CheckProxyStatusJob;
 use App\Models\ProxyServer;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use Illuminate\Support\Facades\DB;
+use PHPUnit\Framework\Assert;
 use Tests\TestCase;
 
 class UpdateProxyActionTest extends TestCase
@@ -21,10 +23,9 @@ class UpdateProxyActionTest extends TestCase
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
         Bus::fake();
-        $proxy = $this->createProxyServer([
+        $proxy = ProxyServer::factory()->online()->create([
             'username' => 'proxy-user',
             'password' => 'old-password',
-            'status' => ProxyStatus::Online,
             'last_checked_at' => now()->subMinute(),
             'response_time_ms' => 42,
             'failure_reason' => 'old failure',
@@ -45,28 +46,29 @@ class UpdateProxyActionTest extends TestCase
 
         Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $updatedProxy->id
             && $job->source === ProxyCheckSource::Manual
-            && $job->checkGeneration === $updatedProxy->check_generation);
+            && $job->checkGeneration === $updatedProxy->check_generation
+            && $job->afterCommit === true);
     }
 
-    private function createProxyServer(array $overrides = []): ProxyServer
+    public function test_sensitive_update_schedules_check_inside_database_transaction(): void
     {
-        $attributes = array_merge([
-            'scheme' => ProxyScheme::Http,
-            'host' => 'example.com',
-            'port' => 8080,
-            'username' => null,
-            'password' => null,
-            'identity_hash' => ProxyServer::identityHashFor(ProxyScheme::Http, 'example.com', 8080, null),
-            'status' => ProxyStatus::Unknown,
-        ], $overrides);
+        $proxy = ProxyServer::factory()->online()->create([
+            'password' => 'old-password',
+        ]);
+        $expectedTransactionLevel = DB::transactionLevel() + 1;
+        $action = new UpdateProxyAction(new class($expectedTransactionLevel) extends ScheduleProxyCheckAction
+        {
+            public function __construct(private readonly int $expectedTransactionLevel) {}
 
-        $attributes['identity_hash'] = ProxyServer::identityHashFor(
-            $attributes['scheme'],
-            $attributes['host'],
-            (int) $attributes['port'],
-            $attributes['username'],
-        );
+            public function execute(ProxyServer $proxy, ProxyCheckSource $source): void
+            {
+                Assert::assertSame(ProxyCheckSource::Manual, $source);
+                Assert::assertGreaterThanOrEqual($this->expectedTransactionLevel, DB::transactionLevel());
+            }
+        });
 
-        return ProxyServer::create($attributes);
+        $action->execute($proxy, [
+            'password' => 'new-password',
+        ]);
     }
 }
