@@ -79,7 +79,14 @@
       @submit="submitForm"
     />
 
-    <ProxyChecksDrawer :open="historyOpen" :proxy="historyProxy" :checks="checks" @close="historyOpen = false" />
+    <ProxyChecksDrawer
+      :open="historyOpen"
+      :proxy="historyProxy"
+      :checks="checks"
+      :loading="checksLoading"
+      :error="checksError"
+      @close="closeHistory"
+    />
 
     <ConfirmDialog
       :open="Boolean(deleteProxyTarget)"
@@ -108,12 +115,16 @@ const {
   items,
   meta,
   checks,
+  checksLoading,
+  checksError,
   loading,
   saving,
   error,
   fieldErrors,
   filters,
   checkingIds,
+  clearErrors,
+  clearChecks,
   load,
   create,
   update,
@@ -167,16 +178,19 @@ function setPage(page: number) {
 }
 
 function openCreate() {
+  clearErrors();
   editingProxy.value = null;
   formOpen.value = true;
 }
 
 function openEdit(proxy: ProxyServer) {
+  clearErrors();
   editingProxy.value = proxy;
   formOpen.value = true;
 }
 
 function closeForm() {
+  clearErrors();
   formOpen.value = false;
   editingProxy.value = null;
 }
@@ -191,9 +205,16 @@ async function submitForm(payload: ProxyPayload) {
 }
 
 async function showHistory(proxy: ProxyServer) {
+  clearChecks();
   historyProxy.value = proxy;
   historyOpen.value = true;
   await openHistory(proxy.id);
+}
+
+function closeHistory() {
+  historyOpen.value = false;
+  historyProxy.value = null;
+  clearChecks();
 }
 
 function askDelete(proxy: ProxyServer) {

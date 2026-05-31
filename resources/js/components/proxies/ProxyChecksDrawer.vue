@@ -10,7 +10,9 @@
           <button class="icon-btn" type="button" aria-label="Close" @click="emit('close')">x</button>
         </header>
 
-        <div v-if="checks.length === 0" class="drawer__empty">No checks</div>
+        <div v-if="loading" class="drawer__empty">Loading checks...</div>
+        <div v-else-if="error" class="drawer__error" role="alert">{{ error }}</div>
+        <div v-else-if="checks.length === 0" class="drawer__empty">No checks</div>
         <ol v-else class="check-list">
           <li v-for="check in checks" :key="check.id" class="check-item">
             <div class="check-item__top">
@@ -37,6 +39,8 @@ defineProps<{
   open: boolean;
   proxy: ProxyServer | null;
   checks: ProxyCheck[];
+  loading?: boolean;
+  error?: string;
 }>();
 
 const emit = defineEmits<{

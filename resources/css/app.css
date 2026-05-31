@@ -261,9 +261,14 @@ button:focus-visible {
 }
 
 .table-muted,
-.drawer__empty {
+.drawer__empty,
+.drawer__error {
   color: #64748b;
   text-align: center;
+}
+
+.drawer__error {
+  color: #991b1b;
 }
 
 .cell-strong {

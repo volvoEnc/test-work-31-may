@@ -25,6 +25,8 @@ export function useProxies() {
   const items = ref<ProxyServer[]>([]);
   const meta = ref<PaginationMeta>(emptyMeta());
   const checks = ref<ProxyCheck[]>([]);
+  const checksLoading = ref(false);
+  const checksError = ref('');
   const loading = ref(false);
   const saving = ref(false);
   const error = ref('');
@@ -36,10 +38,16 @@ export function useProxies() {
   let pollIntervalId: number | undefined;
   let focusedPollTimeoutId: number | undefined;
   let focusedPollStartedAt: number | null = null;
+  let historyRequestId = 0;
 
-  const clearSaveErrors = () => {
+  const clearErrors = () => {
     error.value = '';
     fieldErrors.value = {};
+  };
+
+  const clearChecks = () => {
+    checks.value = [];
+    checksError.value = '';
   };
 
   const applyApiError = (unknownError: unknown, fallback: string) => {
@@ -88,7 +96,7 @@ export function useProxies() {
   };
 
   const save = async (operation: () => Promise<unknown>) => {
-    clearSaveErrors();
+    clearErrors();
     saving.value = true;
 
     try {
@@ -108,7 +116,7 @@ export function useProxies() {
   const update = (id: number, payload: ProxyPayload) => save(() => updateProxy(id, payload));
 
   const remove = async (id: number) => {
-    clearSaveErrors();
+    clearErrors();
     saving.value = true;
 
     try {
@@ -142,7 +150,7 @@ export function useProxies() {
       return;
     }
 
-    const delay = Date.now() === startedAt ? 1000 : 3000;
+    const delay = elapsed === 0 ? 1000 : 3000;
 
     if (elapsed + delay > 30000) {
       focusedPollTimeoutId = undefined;
@@ -154,14 +162,16 @@ export function useProxies() {
 
       focusedPollTimeoutId = undefined;
 
-      if (id && checkingIds.has(id) && Date.now() - startedAt < 30000) {
+      const hasFocusedProxyChecking = id !== undefined ? checkingIds.has(id) : checkingIds.size > 0;
+
+      if (hasFocusedProxyChecking && Date.now() - startedAt < 30000) {
         scheduleFocusedPolling(id);
       }
     }, delay);
   };
 
   const check = async (id: number) => {
-    clearSaveErrors();
+    clearErrors();
     checkingIds.add(id);
 
     try {
@@ -177,7 +187,7 @@ export function useProxies() {
   };
 
   const checkAll = async () => {
-    clearSaveErrors();
+    clearErrors();
     saving.value = true;
 
     try {
@@ -195,15 +205,30 @@ export function useProxies() {
   };
 
   const openHistory = async (id: number) => {
-    clearSaveErrors();
+    clearErrors();
+    clearChecks();
+    checksLoading.value = true;
+    const requestId = ++historyRequestId;
 
     try {
       const response = await listProxyChecks(id, { page: 1, per_page: 20 });
-      checks.value = response.data;
+      if (requestId === historyRequestId) {
+        checks.value = response.data;
+      }
       return true;
     } catch (unknownError) {
-      applyApiError(unknownError, 'Unable to load check history.');
+      if (requestId === historyRequestId) {
+        if (unknownError instanceof ApiError) {
+          checksError.value = unknownError.message;
+        } else {
+          checksError.value = 'Unable to load check history.';
+        }
+      }
       return false;
+    } finally {
+      if (requestId === historyRequestId) {
+        checksLoading.value = false;
+      }
     }
   };
 
@@ -227,12 +252,16 @@ export function useProxies() {
     items,
     meta,
     checks,
+    checksLoading,
+    checksError,
     loading,
     saving,
     error,
     fieldErrors,
     filters,
     checkingIds,
+    clearErrors,
+    clearChecks,
     load,
     create,
     update,

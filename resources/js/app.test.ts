@@ -205,6 +205,60 @@ describe('useProxies manual check polling', () => {
     wrapper.unmount();
   });
 
+  it('keeps polling refresh-all while any visible proxy is checking', async () => {
+    proxyApiMock.checkAllProxies.mockResolvedValue({ data: { queued: true, candidate_count: 1 } });
+    proxyApiMock.listProxies
+      .mockResolvedValueOnce({ data: [proxy('checking')], meta })
+      .mockResolvedValueOnce({ data: [proxy('checking')], meta })
+      .mockResolvedValueOnce({ data: [proxy('online')], meta });
+
+    const { wrapper, proxies } = await mountUseProxies();
+
+    await expect(proxies.checkAll()).resolves.toBe(true);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(3);
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(3);
+
+    wrapper.unmount();
+  });
+
+  it('clears stale history checks while a different proxy history loads', async () => {
+    const firstCheck = {
+      id: 1,
+      source: 'manual' as const,
+      status: 'online' as const,
+      started_at: null,
+      finished_at: null,
+      response_time_ms: 42,
+      http_status: 200,
+      error_code: null,
+      error_message: null,
+    };
+
+    proxyApiMock.listProxyChecks
+      .mockResolvedValueOnce({ data: [firstCheck], meta })
+      .mockImplementationOnce(() => new Promise(() => undefined));
+
+    const { wrapper, proxies } = await mountUseProxies();
+
+    await expect(proxies.openHistory(7)).resolves.toBe(true);
+    expect(proxies.checks.value).toEqual([firstCheck]);
+
+    void proxies.openHistory(8);
+
+    expect(proxies.checks.value).toEqual([]);
+    expect(proxies.checksLoading.value).toBe(true);
+
+    wrapper.unmount();
+  });
+
   it('stops focused polling after thirty seconds even while status remains checking', async () => {
     proxyApiMock.listProxies.mockResolvedValue({ data: [proxy('checking')], meta });
 
