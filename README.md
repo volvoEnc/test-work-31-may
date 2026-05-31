@@ -11,15 +11,16 @@ Dockerized Laravel 12 and Vue 3 application for managing proxy servers and async
 ## Setup
 
 ```bash
-cp .env.example .env
-docker compose build
-docker compose run --rm php-fpm composer install
-docker compose run --rm php-fpm php artisan key:generate
-docker compose run --rm php-fpm php artisan migrate
-docker compose up -d
+docker compose up -d --build
 ```
 
-`docker compose up -d` also runs the one-shot `setup` service, which installs Composer dependencies, creates `.env` when it is missing, generates an application key when needed, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start.
+The one-shot `setup` service installs Composer dependencies, creates `.env` from `.env.example` when it is missing, generates an application key when needed, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start.
+
+For a fresh database reset:
+
+```bash
+docker compose run --rm php-fpm php artisan migrate:fresh
+```
 
 ## Queue And Scheduler
 
