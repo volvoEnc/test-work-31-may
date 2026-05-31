@@ -22,6 +22,9 @@ class ApplyProxyCheckResultActionTest extends TestCase
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
         $proxy = ProxyServer::factory()->checking()->create([
             'checking_started_at' => now()->subSecond(),
+            'check_source' => ProxyCheckSource::Manual,
+            'check_job_token' => 'claimed-token',
+            'check_job_source' => ProxyCheckSource::Manual,
             'failure_reason' => 'Previous failure.',
         ]);
         $startedAt = CarbonImmutable::parse('2026-05-31 11:59:58');
@@ -42,6 +45,10 @@ class ApplyProxyCheckResultActionTest extends TestCase
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Online, $proxy->status);
         $this->assertNull($proxy->checking_started_at);
+        $this->assertNull($proxy->check_generation);
+        $this->assertNull($proxy->check_source);
+        $this->assertNull($proxy->check_job_token);
+        $this->assertNull($proxy->check_job_source);
         $this->assertTrue($finishedAt->equalTo($proxy->last_checked_at));
         $this->assertTrue($finishedAt->equalTo($proxy->last_success_at));
         $this->assertSame(123, $proxy->response_time_ms);
@@ -155,6 +162,88 @@ class ApplyProxyCheckResultActionTest extends TestCase
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
         $this->assertSame('new-generation', $proxy->check_generation);
+        $this->assertNull($proxy->last_checked_at);
+        $this->assertNull($proxy->response_time_ms);
+        $this->assertSame(0, ProxyCheck::query()->count());
+    }
+
+    public function test_guarded_stale_expected_source_does_not_overwrite_proxy_or_create_history(): void
+    {
+        $proxy = ProxyServer::factory()->checking()->create([
+            'checking_started_at' => now()->subMinute(),
+            'check_generation' => 'current-generation',
+            'check_source' => ProxyCheckSource::Manual,
+            'last_checked_at' => null,
+            'response_time_ms' => null,
+        ]);
+        $result = new ProxyCheckResult(
+            ProxyStatus::Online,
+            CarbonImmutable::parse('2026-05-31 12:00:00'),
+            CarbonImmutable::parse('2026-05-31 12:00:01'),
+            25,
+            204,
+            null,
+            null,
+        );
+
+        app(ApplyProxyCheckResultAction::class)->execute(
+            $proxy,
+            $result,
+            ProxyCheckSource::Auto,
+            'current-generation',
+            true,
+            ProxyCheckSource::Auto,
+            true,
+        );
+
+        $proxy->refresh();
+        $this->assertSame(ProxyStatus::Checking, $proxy->status);
+        $this->assertSame('current-generation', $proxy->check_generation);
+        $this->assertSame(ProxyCheckSource::Manual, $proxy->check_source);
+        $this->assertNull($proxy->last_checked_at);
+        $this->assertNull($proxy->response_time_ms);
+        $this->assertSame(0, ProxyCheck::query()->count());
+    }
+
+    public function test_guarded_stale_expected_job_token_does_not_overwrite_proxy_or_create_history(): void
+    {
+        $proxy = ProxyServer::factory()->checking()->create([
+            'checking_started_at' => now()->subMinute(),
+            'check_generation' => 'current-generation',
+            'check_source' => ProxyCheckSource::Manual,
+            'check_job_token' => 'replacement-token',
+            'check_job_source' => ProxyCheckSource::Manual,
+            'last_checked_at' => null,
+            'response_time_ms' => null,
+        ]);
+        $result = new ProxyCheckResult(
+            ProxyStatus::Online,
+            CarbonImmutable::parse('2026-05-31 12:00:00'),
+            CarbonImmutable::parse('2026-05-31 12:00:01'),
+            25,
+            204,
+            null,
+            null,
+        );
+
+        app(ApplyProxyCheckResultAction::class)->execute(
+            $proxy,
+            $result,
+            ProxyCheckSource::Manual,
+            'current-generation',
+            true,
+            ProxyCheckSource::Manual,
+            true,
+            'original-token',
+            true,
+        );
+
+        $proxy->refresh();
+        $this->assertSame(ProxyStatus::Checking, $proxy->status);
+        $this->assertSame('current-generation', $proxy->check_generation);
+        $this->assertSame(ProxyCheckSource::Manual, $proxy->check_source);
+        $this->assertSame('replacement-token', $proxy->check_job_token);
+        $this->assertSame(ProxyCheckSource::Manual, $proxy->check_job_source);
         $this->assertNull($proxy->last_checked_at);
         $this->assertNull($proxy->response_time_ms);
         $this->assertSame(0, ProxyCheck::query()->count());

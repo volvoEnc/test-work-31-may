@@ -20,14 +20,26 @@ class ApplyProxyCheckResultAction
         ProxyCheckSource $source,
         ?string $expectedGeneration = null,
         bool $guardGeneration = false,
+        ?ProxyCheckSource $expectedSource = null,
+        bool $guardSource = false,
+        ?string $expectedJobToken = null,
+        bool $guardJobToken = false,
     ): void {
-        DB::transaction(function () use ($proxy, $result, $source, $expectedGeneration, $guardGeneration): void {
+        DB::transaction(function () use ($proxy, $result, $source, $expectedGeneration, $guardGeneration, $expectedSource, $guardSource, $expectedJobToken, $guardJobToken): void {
             /** @var ProxyServer $lockedProxy */
             $lockedProxy = ProxyServer::query()
                 ->lockForUpdate()
                 ->findOrFail($proxy->id);
 
             if ($guardGeneration && $lockedProxy->check_generation !== $expectedGeneration) {
+                return;
+            }
+
+            if ($guardSource && $lockedProxy->check_source !== $expectedSource) {
+                return;
+            }
+
+            if ($guardJobToken && $lockedProxy->check_job_token !== $expectedJobToken) {
                 return;
             }
 
@@ -38,6 +50,9 @@ class ApplyProxyCheckResultAction
                 'status' => $result->status,
                 'checking_started_at' => null,
                 'check_generation' => null,
+                'check_source' => null,
+                'check_job_token' => null,
+                'check_job_source' => null,
                 'last_checked_at' => $result->finishedAt,
                 'response_time_ms' => $result->responseTimeMs,
                 'failure_reason' => $result->status === ProxyStatus::Offline ? $failureReason : null,

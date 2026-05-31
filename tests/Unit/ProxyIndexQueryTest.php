@@ -5,6 +5,7 @@ namespace Tests\Unit;
 use App\Enums\ProxyScheme;
 use App\Models\ProxyServer;
 use App\Queries\ProxyIndexQuery;
+use App\Support\ProxyIndexSortOptions;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
@@ -12,6 +13,17 @@ use Tests\TestCase;
 class ProxyIndexQueryTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_proxy_index_sort_options_are_centralized(): void
+    {
+        $this->assertTrue(class_exists(ProxyIndexSortOptions::class));
+        $this->assertSame(['created_at', 'last_checked_at', 'status', 'host'], ProxyIndexSortOptions::allowedSorts());
+        $this->assertSame(['asc', 'desc'], ProxyIndexSortOptions::allowedDirections());
+        $this->assertSame('created_at', ProxyIndexSortOptions::defaultSort());
+        $this->assertSame('desc', ProxyIndexSortOptions::defaultDirection());
+        $this->assertSame('created_at', ProxyIndexSortOptions::normalizeSort('host; DROP TABLE proxy_servers'));
+        $this->assertSame('desc', ProxyIndexSortOptions::normalizeDirection('sideways'));
+    }
 
     public function test_it_filters_searches_sorts_and_paginates_proxies(): void
     {

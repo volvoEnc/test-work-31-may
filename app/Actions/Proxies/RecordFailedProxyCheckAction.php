@@ -25,6 +25,10 @@ class RecordFailedProxyCheckAction
         ProxyCheckSource $source,
         ?string $checkGeneration,
         Throwable $exception,
+        ?ProxyCheckSource $expectedSource = null,
+        bool $guardSource = false,
+        ?string $expectedJobToken = null,
+        bool $guardJobToken = false,
     ): void {
         $proxy = ProxyServer::query()->find($proxyId);
 
@@ -55,6 +59,10 @@ class RecordFailedProxyCheckAction
             $source,
             $checkGeneration,
             true,
+            $expectedSource,
+            $guardSource,
+            $expectedJobToken,
+            $guardJobToken,
         );
     }
 

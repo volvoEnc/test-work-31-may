@@ -18,6 +18,9 @@ class ScheduleProxyCheckAction
             'status' => ProxyStatus::Checking,
             'checking_started_at' => now(),
             'check_generation' => $checkGeneration,
+            'check_source' => $source,
+            'check_job_token' => null,
+            'check_job_source' => null,
         ])->save();
 
         CheckProxyStatusJob::dispatch($proxy->id, $source, $checkGeneration)->afterCommit();

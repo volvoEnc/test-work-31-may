@@ -4,6 +4,7 @@ namespace App\Http\Requests\Proxy;
 
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
+use App\Support\ProxyIndexSortOptions;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -22,8 +23,8 @@ class IndexProxyRequest extends FormRequest
             'scheme' => ['nullable', 'string', Rule::in(ProxyScheme::values())],
             'page' => ['nullable', 'integer', 'min:1'],
             'per_page' => ['nullable', 'integer', 'min:10', 'max:100'],
-            'sort' => ['nullable', 'string', Rule::in(['created_at', 'last_checked_at', 'status', 'host'])],
-            'direction' => ['nullable', 'string', Rule::in(['asc', 'desc'])],
+            'sort' => ['nullable', 'string', Rule::in(ProxyIndexSortOptions::allowedSorts())],
+            'direction' => ['nullable', 'string', Rule::in(ProxyIndexSortOptions::allowedDirections())],
         ];
     }
 }

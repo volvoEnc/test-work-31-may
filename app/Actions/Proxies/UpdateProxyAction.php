@@ -6,6 +6,7 @@ use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Exceptions\DuplicateProxyException;
 use App\Models\ProxyServer;
+use App\Support\UniqueConstraintViolationDetector;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
@@ -43,7 +44,7 @@ class UpdateProxyAction
             try {
                 $proxy->fill($data)->save();
             } catch (QueryException $exception) {
-                if ($this->isUniqueConstraintViolation($exception)) {
+                if (UniqueConstraintViolationDetector::detects($exception)) {
                     throw new DuplicateProxyException;
                 }
 
@@ -70,11 +71,5 @@ class UpdateProxyAction
         }
 
         return false;
-    }
-
-    private function isUniqueConstraintViolation(QueryException $exception): bool
-    {
-        return in_array((string) $exception->getCode(), ['23000', '23505'], true)
-            || str_contains(strtolower($exception->getMessage()), 'unique');
     }
 }

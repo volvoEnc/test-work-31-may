@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use Carbon\CarbonImmutable;
@@ -21,6 +22,9 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  * @property ProxyStatus $status
  * @property CarbonImmutable|null $checking_started_at
  * @property string|null $check_generation
+ * @property ProxyCheckSource|null $check_source
+ * @property string|null $check_job_token
+ * @property ProxyCheckSource|null $check_job_source
  * @property CarbonImmutable|null $last_checked_at
  * @property CarbonImmutable|null $last_success_at
  * @property int|null $response_time_ms
@@ -41,6 +45,9 @@ class ProxyServer extends Model
         'status',
         'checking_started_at',
         'check_generation',
+        'check_source',
+        'check_job_token',
+        'check_job_source',
         'last_checked_at',
         'last_success_at',
         'response_time_ms',
@@ -51,6 +58,9 @@ class ProxyServer extends Model
         'password',
         'identity_hash',
         'check_generation',
+        'check_source',
+        'check_job_token',
+        'check_job_source',
     ];
 
     protected function casts(): array
@@ -58,6 +68,8 @@ class ProxyServer extends Model
         return [
             'scheme' => ProxyScheme::class,
             'status' => ProxyStatus::class,
+            'check_source' => ProxyCheckSource::class,
+            'check_job_source' => ProxyCheckSource::class,
             'password' => 'encrypted',
             'checking_started_at' => 'immutable_datetime',
             'last_checked_at' => 'immutable_datetime',

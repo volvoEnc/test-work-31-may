@@ -56,6 +56,39 @@ class DispatchDueProxyChecksJobTest extends TestCase
         Bus::assertNotDispatched(CheckProxyStatusJob::class);
     }
 
+    public function test_it_records_manual_stale_check_with_manual_source(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
+        config([
+            'proxy-manager.check.stale_after_seconds' => 120,
+            'proxy-manager.check.interval_minutes' => 5,
+        ]);
+        Bus::fake();
+        $staleProxy = ProxyServer::factory()->checking()->create([
+            'host' => 'manual-stale.example.com',
+            'checking_started_at' => now()->subSeconds(121),
+            'check_generation' => 'manual-generation',
+            'check_source' => ProxyCheckSource::Manual,
+            'check_job_token' => 'stale-token',
+            'check_job_source' => ProxyCheckSource::Manual,
+            'last_checked_at' => now()->subHour(),
+        ]);
+
+        app(DispatchDueProxyChecksJob::class)->handle(
+            app(ScheduleProxyCheckAction::class),
+            app(ApplyProxyCheckResultAction::class),
+        );
+
+        $staleProxy->refresh();
+        $check = ProxyCheck::query()->sole();
+        $this->assertSame(ProxyStatus::Offline, $staleProxy->status);
+        $this->assertNull($staleProxy->check_source);
+        $this->assertNull($staleProxy->check_job_token);
+        $this->assertNull($staleProxy->check_job_source);
+        $this->assertSame(ProxyCheckSource::Manual, $check->source);
+        Bus::assertNotDispatched(CheckProxyStatusJob::class);
+    }
+
     public function test_it_dispatches_due_proxies_and_skips_fresh_checking_proxies(): void
     {
         CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
@@ -72,6 +105,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
         $dueProxy = ProxyServer::factory()->online()->create([
             'host' => 'due.example.com',
             'last_checked_at' => now()->subMinutes(6),
+            'check_job_token' => 'stale-due-token',
+            'check_job_source' => ProxyCheckSource::Manual,
         ]);
         $freshProxy = ProxyServer::factory()->online()->create([
             'host' => 'fresh.example.com',
@@ -100,6 +135,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
 
         $this->assertSame(ProxyStatus::Checking, $neverChecked->refresh()->status);
         $this->assertSame(ProxyStatus::Checking, $dueProxy->refresh()->status);
+        $this->assertNull($dueProxy->check_job_token);
+        $this->assertNull($dueProxy->check_job_source);
         $this->assertSame(ProxyStatus::Online, $freshProxy->refresh()->status);
         $this->assertSame(ProxyStatus::Checking, $checkingProxy->refresh()->status);
     }
@@ -129,6 +166,10 @@ class DispatchDueProxyChecksJobTest extends TestCase
                     ProxyCheckSource $source,
                     ?string $expectedGeneration = null,
                     bool $guardGeneration = false,
+                    ?ProxyCheckSource $expectedSource = null,
+                    bool $guardSource = false,
+                    ?string $expectedJobToken = null,
+                    bool $guardJobToken = false,
                 ): void {
                     $proxy->forceFill([
                         'status' => ProxyStatus::Checking,
@@ -136,7 +177,7 @@ class DispatchDueProxyChecksJobTest extends TestCase
                         'check_generation' => 'new-generation',
                     ])->save();
 
-                    parent::execute($proxy, $result, $source, $expectedGeneration, $guardGeneration);
+                    parent::execute($proxy, $result, $source, $expectedGeneration, $guardGeneration, $expectedSource, $guardSource, $expectedJobToken, $guardJobToken);
                 }
             },
         );
@@ -144,6 +185,55 @@ class DispatchDueProxyChecksJobTest extends TestCase
         $staleProxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $staleProxy->status);
         $this->assertSame('new-generation', $staleProxy->check_generation);
+        $this->assertNull($staleProxy->failure_reason);
+        $this->assertSame(0, ProxyCheck::query()->count());
+        Bus::assertNotDispatched(CheckProxyStatusJob::class);
+    }
+
+    public function test_stale_resolution_does_not_overwrite_proxy_if_source_changes_before_apply(): void
+    {
+        CarbonImmutable::setTestNow(CarbonImmutable::parse('2026-05-31 12:00:00'));
+        config([
+            'proxy-manager.check.stale_after_seconds' => 120,
+            'proxy-manager.check.interval_minutes' => 5,
+        ]);
+        Bus::fake();
+        $staleProxy = ProxyServer::factory()->checking()->create([
+            'host' => 'manual-stale-race.example.com',
+            'checking_started_at' => now()->subSeconds(121),
+            'check_generation' => 'stale-generation',
+            'check_source' => ProxyCheckSource::Manual,
+            'last_checked_at' => now()->subHour(),
+        ]);
+
+        app(DispatchDueProxyChecksJob::class)->handle(
+            app(ScheduleProxyCheckAction::class),
+            new class(app(ProxyFailureSanitizer::class)) extends ApplyProxyCheckResultAction
+            {
+                public function execute(
+                    ProxyServer $proxy,
+                    ProxyCheckResult $result,
+                    ProxyCheckSource $source,
+                    ?string $expectedGeneration = null,
+                    bool $guardGeneration = false,
+                    ?ProxyCheckSource $expectedSource = null,
+                    bool $guardSource = false,
+                    ?string $expectedJobToken = null,
+                    bool $guardJobToken = false,
+                ): void {
+                    $proxy->forceFill([
+                        'check_source' => ProxyCheckSource::Auto,
+                    ])->save();
+
+                    parent::execute($proxy, $result, $source, $expectedGeneration, $guardGeneration, $expectedSource, $guardSource, $expectedJobToken, $guardJobToken);
+                }
+            },
+        );
+
+        $staleProxy->refresh();
+        $this->assertSame(ProxyStatus::Checking, $staleProxy->status);
+        $this->assertSame('stale-generation', $staleProxy->check_generation);
+        $this->assertSame(ProxyCheckSource::Auto, $staleProxy->check_source);
         $this->assertNull($staleProxy->failure_reason);
         $this->assertSame(0, ProxyCheck::query()->count());
         Bus::assertNotDispatched(CheckProxyStatusJob::class);

@@ -80,4 +80,14 @@ class ProxyCheckStatusTest extends TestCase
             'updated_at' => now(),
         ]);
     }
+
+    public function test_proxy_checks_migration_does_not_duplicate_sqlite_create_table_sql(): void
+    {
+        $migration = file_get_contents(database_path('migrations/2026_05_31_113038_create_proxy_checks_table.php'));
+
+        $this->assertDoesNotMatchRegularExpression(
+            '/DB::statement\s*\(\s*["\']\s*CREATE\s+TABLE\s+proxy_checks\b/is',
+            $migration,
+        );
+    }
 }

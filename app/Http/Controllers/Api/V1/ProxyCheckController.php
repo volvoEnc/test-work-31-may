@@ -6,16 +6,18 @@ use App\Http\Controllers\Controller;
 use App\Http\Requests\Proxy\IndexProxyCheckRequest;
 use App\Http\Resources\ProxyCheckResource;
 use App\Models\ProxyServer;
+use App\Queries\ProxyCheckIndexQuery;
 use Illuminate\Http\Resources\Json\AnonymousResourceCollection;
 
 class ProxyCheckController extends Controller
 {
-    public function index(IndexProxyCheckRequest $request, ProxyServer $proxy): AnonymousResourceCollection
-    {
-        $validated = $request->validated();
-
+    public function index(
+        IndexProxyCheckRequest $request,
+        ProxyServer $proxy,
+        ProxyCheckIndexQuery $checks,
+    ): AnonymousResourceCollection {
         return ProxyCheckResource::collection(
-            $proxy->checks()->latest()->paginate((int) ($validated['per_page'] ?? 20))
+            $checks->paginate($proxy, $request->validated())
         );
     }
 }

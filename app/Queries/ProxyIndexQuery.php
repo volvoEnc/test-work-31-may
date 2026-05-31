@@ -3,26 +3,11 @@
 namespace App\Queries;
 
 use App\Models\ProxyServer;
+use App\Support\ProxyIndexSortOptions;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
 class ProxyIndexQuery
 {
-    private const DEFAULT_SORT = 'created_at';
-
-    private const DEFAULT_DIRECTION = 'desc';
-
-    private const ALLOWED_SORTS = [
-        'created_at',
-        'last_checked_at',
-        'status',
-        'host',
-    ];
-
-    private const ALLOWED_DIRECTIONS = [
-        'asc',
-        'desc',
-    ];
-
     /**
      * @param  array<string, mixed>  $filters
      */
@@ -64,9 +49,7 @@ class ProxyIndexQuery
      */
     private function sort(array $filters): string
     {
-        $sort = (string) ($filters['sort'] ?? self::DEFAULT_SORT);
-
-        return in_array($sort, self::ALLOWED_SORTS, true) ? $sort : self::DEFAULT_SORT;
+        return ProxyIndexSortOptions::normalizeSort($filters['sort'] ?? null);
     }
 
     /**
@@ -74,8 +57,6 @@ class ProxyIndexQuery
      */
     private function direction(array $filters): string
     {
-        $direction = strtolower((string) ($filters['direction'] ?? self::DEFAULT_DIRECTION));
-
-        return in_array($direction, self::ALLOWED_DIRECTIONS, true) ? $direction : self::DEFAULT_DIRECTION;
+        return ProxyIndexSortOptions::normalizeDirection($filters['direction'] ?? null);
     }
 }
