@@ -61,6 +61,7 @@ docker compose run --rm php-fpm php artisan test
 docker compose run --rm node-vite npm run build
 docker compose run --rm node-vite npm run lint
 docker compose run --rm node-vite npm run test
+curl -s http://127.0.0.1:8080/api/v1/health
 ```
 
 ## Status Rules
