@@ -31,6 +31,131 @@ class ProxyApiTest extends TestCase
             ->assertJsonMissingPath('data.0.check_generation');
     }
 
+    public function test_it_filters_proxy_list_by_status_and_scheme(): void
+    {
+        $this->createProxyServer([
+            'host' => 'http-online.example.com',
+            'scheme' => ProxyScheme::Http,
+            'status' => ProxyStatus::Online,
+        ]);
+        $this->createProxyServer([
+            'host' => 'http-offline.example.com',
+            'scheme' => ProxyScheme::Http,
+            'status' => ProxyStatus::Offline,
+        ]);
+        $this->createProxyServer([
+            'host' => 'socks-online.example.com',
+            'scheme' => ProxyScheme::Socks5,
+            'status' => ProxyStatus::Online,
+        ]);
+
+        $response = $this->getJson('/api/v1/proxies?status=online&scheme=http');
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.host', 'http-online.example.com')
+            ->assertJsonPath('data.0.status', 'online')
+            ->assertJsonPath('data.0.scheme', 'http');
+    }
+
+    public function test_it_searches_proxy_list_by_name_host_and_username(): void
+    {
+        $this->createProxyServer(['name' => 'Named Gateway', 'host' => 'name.example.com']);
+        $this->createProxyServer(['host' => 'needle-host.example.com']);
+        $this->createProxyServer(['host' => 'user.example.com', 'username' => 'needle-user']);
+        $this->createProxyServer(['host' => 'miss.example.com']);
+
+        $nameResponse = $this->getJson('/api/v1/proxies?search=Gateway');
+        $hostResponse = $this->getJson('/api/v1/proxies?search=needle-host');
+        $usernameResponse = $this->getJson('/api/v1/proxies?search=needle-user');
+
+        $nameResponse
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.name', 'Named Gateway');
+        $hostResponse
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.host', 'needle-host.example.com');
+        $usernameResponse
+            ->assertOk()
+            ->assertJsonCount(1, 'data')
+            ->assertJsonPath('data.0.username', 'needle-user');
+    }
+
+    public function test_it_allows_expected_sort_fields_and_directions(): void
+    {
+        $this->createProxyServer([
+            'host' => 'beta.example.com',
+            'status' => ProxyStatus::Offline,
+            'last_checked_at' => now()->subHour(),
+        ]);
+        $this->createProxyServer([
+            'host' => 'alpha.example.com',
+            'status' => ProxyStatus::Online,
+            'last_checked_at' => now(),
+        ]);
+
+        $hostResponse = $this->getJson('/api/v1/proxies?sort=host&direction=asc');
+        $statusResponse = $this->getJson('/api/v1/proxies?sort=status&direction=desc');
+        $lastCheckedResponse = $this->getJson('/api/v1/proxies?sort=last_checked_at&direction=asc');
+        $createdResponse = $this->getJson('/api/v1/proxies?sort=created_at&direction=desc');
+
+        $hostResponse
+            ->assertOk()
+            ->assertJsonPath('data.0.host', 'alpha.example.com')
+            ->assertJsonPath('data.1.host', 'beta.example.com');
+        $statusResponse
+            ->assertOk()
+            ->assertJsonPath('data.0.status', 'online')
+            ->assertJsonPath('data.1.status', 'offline');
+        $lastCheckedResponse
+            ->assertOk()
+            ->assertJsonPath('data.0.host', 'beta.example.com')
+            ->assertJsonPath('data.1.host', 'alpha.example.com');
+        $createdResponse
+            ->assertOk()
+            ->assertJsonCount(2, 'data');
+    }
+
+    public function test_it_rejects_invalid_proxy_list_query_parameters(): void
+    {
+        $invalidQueries = [
+            'sort=port',
+            'direction=sideways',
+            'status=retired',
+            'scheme=ftp',
+            'page=0',
+            'per_page=9',
+            'per_page=101',
+        ];
+
+        foreach ($invalidQueries as $query) {
+            $this->getJson("/api/v1/proxies?{$query}")
+                ->assertUnprocessable();
+        }
+    }
+
+    public function test_it_returns_pagination_metadata_and_respects_page_size(): void
+    {
+        for ($index = 1; $index <= 15; $index++) {
+            $this->createProxyServer([
+                'host' => "page-{$index}.example.com",
+            ]);
+        }
+
+        $response = $this->getJson('/api/v1/proxies?per_page=10&page=2&sort=host&direction=asc');
+
+        $response
+            ->assertOk()
+            ->assertJsonCount(5, 'data')
+            ->assertJsonPath('meta.current_page', 2)
+            ->assertJsonPath('meta.per_page', 10)
+            ->assertJsonPath('meta.total', 15)
+            ->assertJsonPath('meta.last_page', 2);
+    }
+
     public function test_it_creates_proxy_without_returning_password_and_queues_initial_check(): void
     {
         Bus::fake();
@@ -78,6 +203,37 @@ class ProxyApiTest extends TestCase
             ->assertStatus(409)
             ->assertJsonPath('message', 'Proxy already exists.')
             ->assertJsonPath('errors.host.0', 'A proxy with the same scheme, host, port and username already exists.');
+    }
+
+    public function test_it_rejects_duplicate_proxy_identity_on_update(): void
+    {
+        Bus::fake();
+        $this->createProxyServer([
+            'scheme' => ProxyScheme::Http,
+            'host' => 'duplicate-update.example.com',
+            'port' => 8080,
+            'username' => 'same-user',
+        ]);
+        $proxy = $this->createProxyServer([
+            'scheme' => ProxyScheme::Socks5,
+            'host' => 'unique-update.example.com',
+            'port' => 1080,
+            'username' => 'other-user',
+        ]);
+
+        $response = $this->patchJson("/api/v1/proxies/{$proxy->id}", [
+            'scheme' => 'http',
+            'host' => 'duplicate-update.example.com',
+            'port' => 8080,
+            'username' => 'same-user',
+        ]);
+
+        $response
+            ->assertStatus(409)
+            ->assertJsonPath('message', 'Proxy already exists.')
+            ->assertJsonPath('errors.host.0', 'A proxy with the same scheme, host, port and username already exists.');
+
+        Bus::assertNotDispatched(CheckProxyStatusJob::class);
     }
 
     public function test_it_updates_proxy_fields_and_queues_check_when_sensitive_data_changes(): void
