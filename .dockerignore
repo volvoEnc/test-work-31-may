@@ -1,4 +1,10 @@
 .git
+.env
+.env.*
+auth.json
 node_modules
 vendor
+public/build
+public/hot
+storage/framework/setup-complete
 storage/logs/*.log

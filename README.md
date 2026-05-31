@@ -8,6 +8,8 @@ Dockerized Laravel 12 and Vue 3 application for managing proxy servers and async
 - Vite dev server: http://localhost:5173
 - MySQL: localhost:3306
 
+Published ports bind to `127.0.0.1` for local development. Add authentication and review the port bindings before exposing the service outside a trusted machine.
+
 ## Setup
 
 ```bash
