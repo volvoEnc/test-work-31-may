@@ -128,7 +128,7 @@ class CheckProxyStatusJobTest extends TestCase
             'checking_started_at' => now()->subSecond(),
             'check_generation' => 'current-generation',
         ]);
-        $message = 'Failure for http://raw%20user:p%40ss%3Aword@example.com and raw user / p@ss:word '.str_repeat('x', 520);
+        $message = 'Failure for http://raw%20user:p%40ss%3aword@example.com and raw user / p@ss:word token p%40ss%3aword '.str_repeat('x', 520);
 
         (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Manual, 'current-generation'))
             ->failed(new RuntimeException($message));
@@ -141,7 +141,7 @@ class CheckProxyStatusJobTest extends TestCase
         $this->assertStringNotContainsString('raw user', (string) $check->error_message);
         $this->assertStringNotContainsString('p@ss:word', (string) $check->error_message);
         $this->assertStringNotContainsString('raw%20user', (string) $check->error_message);
-        $this->assertStringNotContainsString('p%40ss%3Aword', (string) $check->error_message);
+        $this->assertStringNotContainsString('p%40ss%3aword', (string) $check->error_message);
         $this->assertStringContainsString('://***@', (string) $check->error_message);
         $this->assertSame($proxy->failure_reason, $check->error_message);
     }
