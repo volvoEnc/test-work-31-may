@@ -22,19 +22,34 @@ services:
 
   setup:
     <<: *php-service
-    command: sh -lc "composer install && (test -f .env || cp .env.example .env) && php artisan key:generate --force && php artisan migrate --force"
+    command: sh -lc "composer install && (test -f .env || cp .env.example .env) && if ! grep -Eq '^APP_KEY=.+$' .env; then php artisan key:generate --force; fi && php artisan migrate --force && mkdir -p storage/framework && touch storage/framework/setup-complete"
 
   php-fpm:
     <<: *php-service
-    command: sh -lc "until [ -f vendor/autoload.php ] && [ -f .env ]; do echo 'Waiting for composer install and .env'; sleep 2; done; php-fpm"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    command: sh -lc "until [ -f storage/framework/setup-complete ]; do echo 'Waiting for application setup'; sleep 2; done; php-fpm"
 
   queue:
     <<: *php-service
-    command: sh -lc "until [ -f vendor/autoload.php ] && [ -f .env ] && php artisan migrate:status >/dev/null 2>&1; do echo 'Waiting for application setup and migrations'; sleep 2; done; php artisan queue:work database --queue=proxy-checks,default --sleep=1 --tries=1 --timeout=30"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    command: sh -lc "until [ -f storage/framework/setup-complete ]; do echo 'Waiting for application setup'; sleep 2; done; php artisan queue:work database --queue=proxy-checks,default --sleep=1 --tries=1 --timeout=30"
 
   scheduler:
     <<: *php-service
-    command: sh -lc "until [ -f vendor/autoload.php ] && [ -f .env ] && php artisan migrate:status >/dev/null 2>&1; do echo 'Waiting for application setup and migrations'; sleep 2; done; php artisan schedule:work"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      setup:
+        condition: service_completed_successfully
+    command: sh -lc "until [ -f storage/framework/setup-complete ]; do echo 'Waiting for application setup'; sleep 2; done; php artisan schedule:work"
 
   node-vite:
     image: node:22-alpine
