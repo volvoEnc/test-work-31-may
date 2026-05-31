@@ -186,14 +186,19 @@ describe('useProxies manual check polling', () => {
     wrapper.unmount();
   });
 
-  it('stops focused polling after thirty seconds even while status remains checking', async () => {
+  it('stops focused polling at thirty seconds while allowing the global poll to continue', async () => {
     proxyApiMock.listProxies.mockResolvedValue({ data: [proxy('checking')], meta });
 
     const { wrapper, proxies } = await mountUseProxies();
 
     await expect(proxies.check(7)).resolves.toBe(true);
-    await vi.advanceTimersByTimeAsync(30000);
+    await vi.advanceTimersByTimeAsync(29999);
 
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(10);
+
+    // The eleventh call at 30000ms is the composable's global list refresh,
+    // not another focused poll for the still-checking proxy.
+    await vi.advanceTimersByTimeAsync(1);
     expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(11);
 
     await vi.advanceTimersByTimeAsync(3000);
