@@ -4,7 +4,6 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Proxies\CreateProxyAction;
 use App\Actions\Proxies\DeleteProxyAction;
-use App\Actions\Proxies\ScheduleAllProxyChecksAction;
 use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Actions\Proxies\UpdateProxyAction;
 use App\Enums\ProxyCheckSource;
@@ -14,6 +13,7 @@ use App\Http\Requests\Proxy\IndexProxyRequest;
 use App\Http\Requests\Proxy\StoreProxyRequest;
 use App\Http\Requests\Proxy\UpdateProxyRequest;
 use App\Http\Resources\ProxyResource;
+use App\Jobs\ScheduleAllProxyChecksJob;
 use App\Models\ProxyServer;
 use App\Queries\ProxyIndexQuery;
 use Illuminate\Http\JsonResponse;
@@ -79,9 +79,11 @@ class ProxyController extends Controller
         ], Response::HTTP_ACCEPTED);
     }
 
-    public function checkAll(ScheduleAllProxyChecksAction $scheduleAllProxyChecks): JsonResponse
+    public function checkAll(): JsonResponse
     {
-        $count = $scheduleAllProxyChecks->execute(ProxyCheckSource::Manual);
+        $count = ProxyServer::query()->count();
+
+        ScheduleAllProxyChecksJob::dispatch(ProxyCheckSource::Manual)->afterCommit();
 
         return response()->json([
             'data' => [

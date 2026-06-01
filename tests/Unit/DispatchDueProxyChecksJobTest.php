@@ -4,7 +4,7 @@ namespace Tests\Unit;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\ScheduleProxyCheckAction;
-use App\Data\ProxyCheckResult;
+use App\Data\ApplyProxyCheckResultCommand;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
@@ -161,23 +161,15 @@ class DispatchDueProxyChecksJobTest extends TestCase
             new class(app(ProxyFailureSanitizer::class)) extends ApplyProxyCheckResultAction
             {
                 public function execute(
-                    ProxyServer $proxy,
-                    ProxyCheckResult $result,
-                    ProxyCheckSource $source,
-                    ?string $expectedGeneration = null,
-                    bool $guardGeneration = false,
-                    ?ProxyCheckSource $expectedSource = null,
-                    bool $guardSource = false,
-                    ?string $expectedJobToken = null,
-                    bool $guardJobToken = false,
+                    ApplyProxyCheckResultCommand $command,
                 ): void {
-                    $proxy->forceFill([
+                    $command->proxy->forceFill([
                         'status' => ProxyStatus::Checking,
                         'checking_started_at' => now(),
                         'check_generation' => 'new-generation',
                     ])->save();
 
-                    parent::execute($proxy, $result, $source, $expectedGeneration, $guardGeneration, $expectedSource, $guardSource, $expectedJobToken, $guardJobToken);
+                    parent::execute($command);
                 }
             },
         );
@@ -211,21 +203,13 @@ class DispatchDueProxyChecksJobTest extends TestCase
             new class(app(ProxyFailureSanitizer::class)) extends ApplyProxyCheckResultAction
             {
                 public function execute(
-                    ProxyServer $proxy,
-                    ProxyCheckResult $result,
-                    ProxyCheckSource $source,
-                    ?string $expectedGeneration = null,
-                    bool $guardGeneration = false,
-                    ?ProxyCheckSource $expectedSource = null,
-                    bool $guardSource = false,
-                    ?string $expectedJobToken = null,
-                    bool $guardJobToken = false,
+                    ApplyProxyCheckResultCommand $command,
                 ): void {
-                    $proxy->forceFill([
+                    $command->proxy->forceFill([
                         'check_source' => ProxyCheckSource::Auto,
                     ])->save();
 
-                    parent::execute($proxy, $result, $source, $expectedGeneration, $guardGeneration, $expectedSource, $guardSource, $expectedJobToken, $guardJobToken);
+                    parent::execute($command);
                 }
             },
         );

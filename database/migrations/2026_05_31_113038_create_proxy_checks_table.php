@@ -1,6 +1,5 @@
 <?php
 
-use App\Enums\ProxyStatus;
 use Illuminate\Database\Migrations\Migration;
 use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
@@ -18,7 +17,7 @@ return new class extends Migration
                 ->constrained('proxy_servers')
                 ->cascadeOnDelete();
             $table->string('source', 20);
-            $table->enum('status', [ProxyStatus::Online, ProxyStatus::Offline]);
+            $table->string('status', 20);
             $table->timestamp('started_at');
             $table->timestamp('finished_at');
             $table->unsignedInteger('response_time_ms')->nullable();

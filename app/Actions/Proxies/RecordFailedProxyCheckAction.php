@@ -2,6 +2,8 @@
 
 namespace App\Actions\Proxies;
 
+use App\Data\ApplyProxyCheckResultCommand;
+use App\Data\ProxyCheckGuard;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
@@ -25,10 +27,7 @@ class RecordFailedProxyCheckAction
         ProxyCheckSource $source,
         ?string $checkGeneration,
         Throwable $exception,
-        ?ProxyCheckSource $expectedSource = null,
-        bool $guardSource = false,
-        ?string $expectedJobToken = null,
-        bool $guardJobToken = false,
+        ?ProxyCheckGuard $guard = null,
     ): void {
         $proxy = ProxyServer::query()->find($proxyId);
 
@@ -45,7 +44,7 @@ class RecordFailedProxyCheckAction
         $proxyUri = $this->uriFactory->make($proxy);
         $errorMessage = $this->failureSanitizer->sanitize($exception->getMessage(), $proxy, $proxyUri);
 
-        $this->applyResult->execute(
+        $this->applyResult->execute(new ApplyProxyCheckResultCommand(
             $proxy,
             new ProxyCheckResult(
                 ProxyStatus::Offline,
@@ -57,13 +56,8 @@ class RecordFailedProxyCheckAction
                 $errorMessage,
             ),
             $source,
-            $checkGeneration,
-            true,
-            $expectedSource,
-            $guardSource,
-            $expectedJobToken,
-            $guardJobToken,
-        );
+            $guard?->withGeneration($checkGeneration) ?? ProxyCheckGuard::generation($checkGeneration),
+        ));
     }
 
     private function isCurrentGeneration(ProxyServer $proxy, ?string $checkGeneration): bool

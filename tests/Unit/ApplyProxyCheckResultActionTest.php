@@ -3,6 +3,8 @@
 namespace Tests\Unit;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
+use App\Data\ApplyProxyCheckResultCommand;
+use App\Data\ProxyCheckGuard;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
@@ -11,11 +13,41 @@ use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use InvalidArgumentException;
 use Tests\TestCase;
 
 class ApplyProxyCheckResultActionTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_proxy_check_guard_allows_and_denies_expected_null_fields(): void
+    {
+        $proxy = ProxyServer::factory()->checking()->create([
+            'check_generation' => null,
+            'check_source' => null,
+            'check_job_token' => null,
+        ]);
+
+        $guard = ProxyCheckGuard::generation(null)
+            ->withSource(null)
+            ->withJobToken(null);
+
+        $this->assertTrue($guard->allows($proxy->refresh()));
+
+        $proxy->forceFill(['check_job_token' => 'claimed-token'])->save();
+
+        $this->assertFalse($guard->allows($proxy->refresh()));
+    }
+
+    public function test_proxy_check_guard_rejects_conflicting_generation_expectations(): void
+    {
+        $guard = ProxyCheckGuard::generation('current-generation')
+            ->withGeneration('current-generation');
+
+        $this->expectException(InvalidArgumentException::class);
+
+        $guard->withGeneration('stale-generation');
+    }
 
     public function test_it_updates_proxy_and_creates_online_history(): void
     {
@@ -40,7 +72,11 @@ class ApplyProxyCheckResultActionTest extends TestCase
             null,
         );
 
-        app(ApplyProxyCheckResultAction::class)->execute($proxy, $result, ProxyCheckSource::Manual);
+        app(ApplyProxyCheckResultAction::class)->execute(new ApplyProxyCheckResultCommand(
+            $proxy,
+            $result,
+            ProxyCheckSource::Manual,
+        ));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Online, $proxy->status);
@@ -84,7 +120,11 @@ class ApplyProxyCheckResultActionTest extends TestCase
             $message,
         );
 
-        app(ApplyProxyCheckResultAction::class)->execute($proxy, $result, ProxyCheckSource::Auto);
+        app(ApplyProxyCheckResultAction::class)->execute(new ApplyProxyCheckResultCommand(
+            $proxy,
+            $result,
+            ProxyCheckSource::Auto,
+        ));
 
         $proxy->refresh();
         $check = ProxyCheck::query()->sole();
@@ -116,13 +156,12 @@ class ApplyProxyCheckResultActionTest extends TestCase
             'Old check failed.',
         );
 
-        app(ApplyProxyCheckResultAction::class)->execute(
+        app(ApplyProxyCheckResultAction::class)->execute(new ApplyProxyCheckResultCommand(
             $proxy,
             $result,
             ProxyCheckSource::Auto,
-            'old-generation',
-            true,
-        );
+            ProxyCheckGuard::generation('old-generation'),
+        ));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
@@ -151,13 +190,12 @@ class ApplyProxyCheckResultActionTest extends TestCase
             null,
         );
 
-        app(ApplyProxyCheckResultAction::class)->execute(
+        app(ApplyProxyCheckResultAction::class)->execute(new ApplyProxyCheckResultCommand(
             $proxy,
             $result,
             ProxyCheckSource::Auto,
-            null,
-            true,
-        );
+            ProxyCheckGuard::generation(null),
+        ));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
@@ -186,15 +224,12 @@ class ApplyProxyCheckResultActionTest extends TestCase
             null,
         );
 
-        app(ApplyProxyCheckResultAction::class)->execute(
+        app(ApplyProxyCheckResultAction::class)->execute(new ApplyProxyCheckResultCommand(
             $proxy,
             $result,
             ProxyCheckSource::Auto,
-            'current-generation',
-            true,
-            ProxyCheckSource::Auto,
-            true,
-        );
+            ProxyCheckGuard::generation('current-generation')->withSource(ProxyCheckSource::Auto),
+        ));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
@@ -226,17 +261,14 @@ class ApplyProxyCheckResultActionTest extends TestCase
             null,
         );
 
-        app(ApplyProxyCheckResultAction::class)->execute(
+        app(ApplyProxyCheckResultAction::class)->execute(new ApplyProxyCheckResultCommand(
             $proxy,
             $result,
             ProxyCheckSource::Manual,
-            'current-generation',
-            true,
-            ProxyCheckSource::Manual,
-            true,
-            'original-token',
-            true,
-        );
+            ProxyCheckGuard::generation('current-generation')
+                ->withSource(ProxyCheckSource::Manual)
+                ->withJobToken('original-token'),
+        ));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);

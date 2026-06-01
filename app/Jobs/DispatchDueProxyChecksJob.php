@@ -4,6 +4,8 @@ namespace App\Jobs;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\ScheduleProxyCheckAction;
+use App\Data\ApplyProxyCheckResultCommand;
+use App\Data\ProxyCheckGuard;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
@@ -48,7 +50,7 @@ class DispatchDueProxyChecksJob implements ShouldQueue
                     $expectedSource = $proxy->check_source;
                     $checkSource = $expectedSource ?? ProxyCheckSource::Auto;
 
-                    $applyResult->execute(
+                    $applyResult->execute(new ApplyProxyCheckResultCommand(
                         $proxy,
                         new ProxyCheckResult(
                             ProxyStatus::Offline,
@@ -60,11 +62,8 @@ class DispatchDueProxyChecksJob implements ShouldQueue
                             'Proxy check became stale.',
                         ),
                         $checkSource,
-                        $checkGeneration,
-                        true,
-                        $expectedSource,
-                        true,
-                    );
+                        ProxyCheckGuard::generation($checkGeneration)->withSource($expectedSource),
+                    ));
                 }
             });
 

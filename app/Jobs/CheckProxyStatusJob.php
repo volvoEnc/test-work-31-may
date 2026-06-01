@@ -4,6 +4,9 @@ namespace App\Jobs;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\RecordFailedProxyCheckAction;
+use App\Actions\Proxies\RecordFailedProxyCheckLifecycleAction;
+use App\Data\ApplyProxyCheckResultCommand;
+use App\Data\ProxyCheckGuard;
 use App\Enums\ProxyCheckSource;
 use App\Models\ProxyServer;
 use App\Services\ProxyChecker\ProxyCheckerInterface;
@@ -47,8 +50,11 @@ class CheckProxyStatusJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         return 'proxy:'.$this->proxyId;
     }
 
-    public function handle(ProxyCheckerInterface $checker, ApplyProxyCheckResultAction $applyResult): void
-    {
+    public function handle(
+        ProxyCheckerInterface $checker,
+        ApplyProxyCheckResultAction $applyResult,
+        RecordFailedProxyCheckAction $recordFailedProxyCheck,
+    ): void {
         $proxy = ProxyServer::query()->find($this->proxyId);
 
         if (! $proxy instanceof ProxyServer) {
@@ -71,61 +77,32 @@ class CheckProxyStatusJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
         try {
             $result = $checker->check($proxy->refresh());
         } catch (Throwable $exception) {
-            app(RecordFailedProxyCheckAction::class)->execute(
+            $recordFailedProxyCheck->execute(
                 $this->proxyId,
                 $currentSource,
                 $currentGeneration,
                 $exception,
-                $persistedSource,
-                true,
-                $this->checkJobToken,
-                true,
+                ProxyCheckGuard::generation($currentGeneration)
+                    ->withSource($persistedSource)
+                    ->withJobToken($this->checkJobToken),
             );
 
             throw $exception;
         }
 
-        $applyResult->execute(
+        $applyResult->execute(new ApplyProxyCheckResultCommand(
             $proxy,
             $result,
             $currentSource,
-            $currentGeneration,
-            true,
-            $persistedSource,
-            true,
-            $this->checkJobToken,
-            true,
-        );
+            ProxyCheckGuard::generation($currentGeneration)
+                ->withSource($persistedSource)
+                ->withJobToken($this->checkJobToken),
+        ));
     }
 
     public function failed(Throwable $exception): void
     {
-        $proxy = ProxyServer::query()->find($this->proxyId);
-
-        if (! $proxy instanceof ProxyServer || blank($proxy->check_generation)) {
-            return;
-        }
-
-        if ($proxy->check_job_token !== $this->checkJobToken) {
-            return;
-        }
-
-        $claimedSource = $proxy->check_job_source;
-
-        if ($proxy->check_source !== $claimedSource) {
-            return;
-        }
-
-        app(RecordFailedProxyCheckAction::class)->execute(
-            $this->proxyId,
-            $claimedSource ?? $this->source,
-            $proxy->check_generation,
-            $exception,
-            $claimedSource,
-            true,
-            $this->checkJobToken,
-            true,
-        );
+        RecordFailedProxyCheckLifecycleAction::record($this->proxyId, $this->source, $this->checkJobToken, $exception);
     }
 
     private function claimCurrentGeneration(string $currentGeneration, ?ProxyCheckSource $persistedSource): bool

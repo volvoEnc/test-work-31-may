@@ -7,6 +7,7 @@ use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Jobs\CheckProxyStatusJob;
+use App\Jobs\ScheduleAllProxyChecksJob;
 use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -343,19 +344,25 @@ class ProxyApiTest extends TestCase
         Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
     }
 
-    public function test_it_queues_manual_checks_for_all_proxies(): void
+    public function test_it_queues_mass_manual_check_job_for_all_proxies(): void
     {
         Bus::fake();
         ProxyServer::factory()->create(['host' => 'all.example.com']);
+        ProxyServer::factory()->create(['host' => 'second-all.example.com']);
 
         $response = $this->postJson('/api/v1/proxies/check');
 
         $response
             ->assertAccepted()
             ->assertJsonPath('data.queued', true)
-            ->assertJsonPath('data.candidate_count', 1);
+            ->assertJsonPath('data.candidate_count', 2);
 
-        Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->afterCommit === true);
+        Bus::assertDispatched(ScheduleAllProxyChecksJob::class, function (ScheduleAllProxyChecksJob $job): bool {
+            return $job->source === ProxyCheckSource::Manual
+                && $job->afterCommit === true;
+        });
+        Bus::assertDispatched(ScheduleAllProxyChecksJob::class, 1);
+        Bus::assertNotDispatched(CheckProxyStatusJob::class);
     }
 
     public function test_it_returns_proxy_check_history(): void

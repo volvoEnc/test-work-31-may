@@ -2,9 +2,9 @@
 
 namespace App\Actions\Proxies;
 
+use App\Data\ApplyProxyCheckResultCommand;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
-use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
 use App\Support\ProxyFailureSanitizer;
@@ -14,35 +14,19 @@ class ApplyProxyCheckResultAction
 {
     public function __construct(private readonly ProxyFailureSanitizer $failureSanitizer) {}
 
-    public function execute(
-        ProxyServer $proxy,
-        ProxyCheckResult $result,
-        ProxyCheckSource $source,
-        ?string $expectedGeneration = null,
-        bool $guardGeneration = false,
-        ?ProxyCheckSource $expectedSource = null,
-        bool $guardSource = false,
-        ?string $expectedJobToken = null,
-        bool $guardJobToken = false,
-    ): void {
-        DB::transaction(function () use ($proxy, $result, $source, $expectedGeneration, $guardGeneration, $expectedSource, $guardSource, $expectedJobToken, $guardJobToken): void {
+    public function execute(ApplyProxyCheckResultCommand $command): void
+    {
+        DB::transaction(function () use ($command): void {
             /** @var ProxyServer $lockedProxy */
             $lockedProxy = ProxyServer::query()
                 ->lockForUpdate()
-                ->findOrFail($proxy->id);
+                ->findOrFail($command->proxy->id);
 
-            if ($guardGeneration && $lockedProxy->check_generation !== $expectedGeneration) {
+            if ($command->guard?->allows($lockedProxy) === false) {
                 return;
             }
 
-            if ($guardSource && $lockedProxy->check_source !== $expectedSource) {
-                return;
-            }
-
-            if ($guardJobToken && $lockedProxy->check_job_token !== $expectedJobToken) {
-                return;
-            }
-
+            $result = $command->result;
             $errorMessage = $this->failureSanitizer->sanitize($result->errorMessage, $lockedProxy);
             $failureReason = $this->failureReason($result, $errorMessage);
 
@@ -65,7 +49,7 @@ class ApplyProxyCheckResultAction
             $lockedProxy->save();
 
             $lockedProxy->checks()->create([
-                'source' => $source,
+                'source' => $command->source,
                 'status' => $result->status,
                 'started_at' => $result->startedAt,
                 'finished_at' => $result->finishedAt,

@@ -11,7 +11,7 @@ Artisan::command('inspire', function () {
 
 Schedule::job(new DispatchDueProxyChecksJob, (string) config('proxy-manager.check.queue'))
     ->name('proxy-manager:dispatch-due-checks')
-    ->everyFiveMinutes()
+    ->everyMinute()
     ->withoutOverlapping(10)
     ->onOneServer();
 
