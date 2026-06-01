@@ -6,10 +6,12 @@ use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use Carbon\CarbonImmutable;
+use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
+use Illuminate\Database\Eloquent\MassPrunable;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
-use InvalidArgumentException;
 
 /**
  * @property int $id
@@ -25,7 +27,10 @@ use InvalidArgumentException;
  */
 class ProxyCheck extends Model
 {
+    /** @use HasFactory<Factory<ProxyCheck>> */
     use HasFactory;
+
+    use MassPrunable;
 
     protected $fillable = [
         'proxy_server_id',
@@ -50,21 +55,25 @@ class ProxyCheck extends Model
         ];
     }
 
-    protected static function booted(): void
-    {
-        static::saving(function (self $check): void {
-            $status = $check->getAttribute('status') instanceof ProxyStatus
-                ? $check->status
-                : ProxyStatus::from((string) $check->getAttribute('status'));
-
-            if (! in_array($status, [ProxyStatus::Online, ProxyStatus::Offline], true)) {
-                throw new InvalidArgumentException('Proxy check status must be online or offline.');
-            }
-        });
-    }
-
+    /**
+     * @return BelongsTo<ProxyServer, $this>
+     */
     public function proxyServer(): BelongsTo
     {
         return $this->belongsTo(ProxyServer::class);
+    }
+
+    /**
+     * @return Builder<static>
+     */
+    public function prunable(): Builder
+    {
+        return static::query()
+            ->where('created_at', '<', now()->subDays($this->retentionDays()));
+    }
+
+    private function retentionDays(): int
+    {
+        return max(1, (int) config('proxy-manager.check.retention_days', 30));
     }
 }

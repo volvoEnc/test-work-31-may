@@ -10,6 +10,7 @@ class ProxyIndexQuery
 {
     /**
      * @param  array<string, mixed>  $filters
+     * @return LengthAwarePaginator<int, ProxyServer>
      */
     public function paginate(array $filters): LengthAwarePaginator
     {

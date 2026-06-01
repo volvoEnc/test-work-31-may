@@ -9,6 +9,9 @@ enum ProxyStatus: string
     case Online = 'online';
     case Offline = 'offline';
 
+    /**
+     * @return list<string>
+     */
     public static function values(): array
     {
         return array_column(self::cases(), 'value');

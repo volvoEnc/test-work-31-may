@@ -2,6 +2,7 @@
 
 namespace Tests\Unit;
 
+use App\Data\ProxyIdentity;
 use App\Enums\ProxyScheme;
 use App\Models\ProxyServer;
 use Illuminate\Foundation\Testing\RefreshDatabase;
@@ -22,7 +23,7 @@ class ProxyServerFactoryTest extends TestCase
         ]);
 
         $this->assertSame(
-            ProxyServer::identityHashFor(ProxyScheme::Socks5, 'Factory.EXAMPLE.com', 1080, 'ProxyUser'),
+            ProxyIdentity::hashFor(ProxyScheme::Socks5, 'Factory.EXAMPLE.com', 1080, 'ProxyUser'),
             $proxy->identity_hash,
         );
     }

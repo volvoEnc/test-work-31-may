@@ -5,6 +5,7 @@ namespace App\Http\Requests\Proxy;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Support\ProxyIndexSortOptions;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -15,6 +16,9 @@ class IndexProxyRequest extends FormRequest
         return true;
     }
 
+    /**
+     * @return array<string, list<string|\Stringable|ValidationRule>>
+     */
     public function rules(): array
     {
         return [

@@ -14,6 +14,9 @@ class CreateProxyAction
 {
     public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck) {}
 
+    /**
+     * @param  array<string, mixed>  $data
+     */
     public function execute(array $data): ProxyServer
     {
         $data['identity_hash'] = ProxyServer::identityHashFor(

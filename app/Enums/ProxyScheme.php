@@ -9,6 +9,9 @@ enum ProxyScheme: string
     case Socks4 = 'socks4';
     case Socks5 = 'socks5';
 
+    /**
+     * @return list<string>
+     */
     public static function values(): array
     {
         return array_column(self::cases(), 'value');

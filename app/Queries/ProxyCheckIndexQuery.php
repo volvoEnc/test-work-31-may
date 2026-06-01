@@ -2,6 +2,7 @@
 
 namespace App\Queries;
 
+use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
 use Illuminate\Contracts\Pagination\LengthAwarePaginator;
 
@@ -9,6 +10,7 @@ class ProxyCheckIndexQuery
 {
     /**
      * @param  array<string, mixed>  $filters
+     * @return LengthAwarePaginator<int, ProxyCheck>
      */
     public function paginate(ProxyServer $proxy, array $filters): LengthAwarePaginator
     {

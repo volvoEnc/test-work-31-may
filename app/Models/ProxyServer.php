@@ -2,10 +2,13 @@
 
 namespace App\Models;
 
+use App\Data\ProxyEndpoint;
+use App\Data\ProxyIdentity;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use Carbon\CarbonImmutable;
+use Database\Factories\ProxyServerFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\HasMany;
@@ -32,6 +35,7 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
  */
 class ProxyServer extends Model
 {
+    /** @use HasFactory<ProxyServerFactory> */
     use HasFactory;
 
     protected $fillable = [
@@ -77,6 +81,9 @@ class ProxyServer extends Model
         ];
     }
 
+    /**
+     * @return HasMany<ProxyCheck, $this>
+     */
     public function checks(): HasMany
     {
         return $this->hasMany(ProxyCheck::class);
@@ -91,24 +98,16 @@ class ProxyServer extends Model
 
     public function displayAddress(): string
     {
-        $host = filter_var($this->host, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6)
-            ? '['.$this->host.']'
-            : $this->host;
-
-        $credentials = filled($this->username) ? rawurlencode((string) $this->username).'@' : '';
-
-        return $this->scheme->value.'://'.$credentials.$host.':'.$this->port;
+        return (new ProxyEndpoint(
+            $this->scheme,
+            $this->host,
+            $this->port,
+            $this->username,
+        ))->displayAddress();
     }
 
     public static function identityHashFor(string|ProxyScheme $scheme, string $host, int $port, ?string $username): string
     {
-        $schemeValue = $scheme instanceof ProxyScheme ? $scheme->value : $scheme;
-
-        return hash('sha256', implode('|', [
-            strtolower($schemeValue),
-            strtolower($host),
-            (string) $port,
-            strtolower($username ?? ''),
-        ]));
+        return ProxyIdentity::hashFor($scheme, $host, $port, $username);
     }
 }

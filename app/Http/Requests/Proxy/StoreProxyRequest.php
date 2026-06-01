@@ -4,6 +4,7 @@ namespace App\Http\Requests\Proxy;
 
 use App\Enums\ProxyScheme;
 use App\Rules\ProxyHostRule;
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
@@ -14,6 +15,9 @@ class StoreProxyRequest extends FormRequest
         return true;
     }
 
+    /**
+     * @return array<string, list<string|\Stringable|ValidationRule>>
+     */
     public function rules(): array
     {
         return [

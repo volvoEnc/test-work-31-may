@@ -2,13 +2,16 @@
 
 namespace Tests\Unit;
 
+use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
+use App\Exceptions\InvalidProxyCheckStatusException;
 use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
+use Carbon\CarbonImmutable;
+use Illuminate\Database\QueryException;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Schema;
-use InvalidArgumentException;
 use Tests\TestCase;
 
 class ProxyCheckStatusTest extends TestCase
@@ -31,36 +34,39 @@ class ProxyCheckStatusTest extends TestCase
         $this->assertSame(ProxyStatus::Online, $check->status);
     }
 
-    public function test_it_rejects_checking_check_status(): void
+    public function test_proxy_check_result_rejects_checking_as_persisted_status(): void
     {
-        $proxyServer = ProxyServer::factory()->create();
-
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Proxy check status must be online or offline.');
-
-        ProxyCheck::create([
-            'proxy_server_id' => $proxyServer->id,
-            'source' => ProxyCheckSource::Manual,
-            'status' => ProxyStatus::Checking,
-            'started_at' => now(),
-            'finished_at' => now(),
-        ]);
+        $this->assertRejectedPersistedStatus(ProxyStatus::Checking);
     }
 
-    public function test_it_rejects_unknown_check_status(): void
+    public function test_proxy_check_result_rejects_unknown_as_persisted_status(): void
+    {
+        $this->assertRejectedPersistedStatus(ProxyStatus::Unknown);
+    }
+
+    public function test_proxy_check_result_accepts_online_and_offline_persisted_statuses(): void
+    {
+        $this->assertSame(ProxyStatus::Online, $this->proxyCheckResultForStatus(ProxyStatus::Online)->status);
+        $this->assertSame(ProxyStatus::Offline, $this->proxyCheckResultForStatus(ProxyStatus::Offline)->status);
+    }
+
+    public function test_database_rejects_non_terminal_check_statuses(): void
     {
         $proxyServer = ProxyServer::factory()->create();
 
-        $this->expectException(InvalidArgumentException::class);
-        $this->expectExceptionMessage('Proxy check status must be online or offline.');
+        try {
+            ProxyCheck::create([
+                'proxy_server_id' => $proxyServer->id,
+                'source' => ProxyCheckSource::Manual,
+                'status' => ProxyStatus::Checking,
+                'started_at' => now(),
+                'finished_at' => now(),
+            ]);
 
-        ProxyCheck::create([
-            'proxy_server_id' => $proxyServer->id,
-            'source' => ProxyCheckSource::Manual,
-            'status' => ProxyStatus::Unknown,
-            'started_at' => now(),
-            'finished_at' => now(),
-        ]);
+            $this->fail('Database accepted a non-terminal proxy check status.');
+        } catch (QueryException) {
+            $this->assertSame(0, ProxyCheck::query()->count());
+        }
     }
 
     public function test_proxy_check_status_column_uses_string_storage(): void
@@ -96,5 +102,26 @@ class ProxyCheckStatusTest extends TestCase
             '/DB::statement\s*\(\s*["\']\s*CREATE\s+TABLE\s+proxy_checks\b/is',
             $migration,
         );
+    }
+
+    private function proxyCheckResultForStatus(ProxyStatus $status): ProxyCheckResult
+    {
+        return new ProxyCheckResult(
+            $status,
+            CarbonImmutable::parse('2026-05-31 12:00:00'),
+            CarbonImmutable::parse('2026-05-31 12:00:01'),
+            null,
+            null,
+            null,
+            null,
+        );
+    }
+
+    private function assertRejectedPersistedStatus(ProxyStatus $status): void
+    {
+        $this->expectException(InvalidProxyCheckStatusException::class);
+        $this->expectExceptionMessage('Proxy check persisted status must be online or offline.');
+
+        $this->proxyCheckResultForStatus($status);
     }
 }

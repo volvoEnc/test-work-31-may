@@ -9,13 +9,11 @@ class PruneProxyChecksCommand extends Command
 {
     protected $signature = 'proxy-checks:prune';
 
-    protected $description = 'Prune proxy check records older than 30 days.';
+    protected $description = 'Prune proxy check records older than the configured retention window.';
 
     public function handle(): int
     {
-        $deleted = ProxyCheck::query()
-            ->where('created_at', '<', now()->subDays(30))
-            ->delete();
+        $deleted = (new ProxyCheck)->pruneAll();
 
         $this->info("Deleted {$deleted} proxy check records.");
 

@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Proxy;
 
+use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Foundation\Http\FormRequest;
 
 class IndexProxyCheckRequest extends FormRequest
@@ -11,6 +12,9 @@ class IndexProxyCheckRequest extends FormRequest
         return true;
     }
 
+    /**
+     * @return array<string, list<string|\Stringable|ValidationRule>>
+     */
     public function rules(): array
     {
         return [

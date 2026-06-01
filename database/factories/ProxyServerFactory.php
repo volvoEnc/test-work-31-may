@@ -2,6 +2,7 @@
 
 namespace Database\Factories;
 
+use App\Data\ProxyIdentity;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
@@ -43,7 +44,7 @@ class ProxyServerFactory extends Factory
     public function configure(): static
     {
         return $this->afterMaking(function (ProxyServer $proxyServer): void {
-            $proxyServer->identity_hash = ProxyServer::identityHashFor(
+            $proxyServer->identity_hash = ProxyIdentity::hashFor(
                 $proxyServer->scheme,
                 $proxyServer->host,
                 (int) $proxyServer->port,

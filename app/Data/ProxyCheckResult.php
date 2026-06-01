@@ -5,7 +5,6 @@ namespace App\Data;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyStatus;
 use Carbon\CarbonImmutable;
-use InvalidArgumentException;
 
 final readonly class ProxyCheckResult
 {
@@ -18,8 +17,6 @@ final readonly class ProxyCheckResult
         public ?ProxyCheckErrorCode $errorCode,
         public ?string $errorMessage,
     ) {
-        if (! in_array($this->status, [ProxyStatus::Online, ProxyStatus::Offline], true)) {
-            throw new InvalidArgumentException('Proxy check result status must be online or offline.');
-        }
+        PersistedProxyCheckStatus::assertAllows($this->status);
     }
 }
