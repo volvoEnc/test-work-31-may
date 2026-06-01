@@ -4,19 +4,19 @@ Dockerized Laravel 12 and Vue 3 application for managing proxy servers and async
 
 ## Services
 
-- Backend: http://localhost:8080
+- Backend: http://localhost:8088
 - Vite dev server: http://localhost:5173
 - MySQL: localhost:3306
 
-Published ports bind to `127.0.0.1` for local development. Add authentication and review the port bindings before exposing the service outside a trusted machine.
+Published ports bind to `127.0.0.1` for local development. `APP_HTTP_PORT`, `VITE_DEV_HOST`, and `VITE_DEV_PORT` can be changed in `.env` if another local project has already annexed the port with imperial confidence. Add authentication and review the port bindings before exposing the service outside a trusted machine.
 
 ## Setup
 
 ```bash
-docker compose up -d --build
+docker compose up -d
 ```
 
-The one-shot `setup` service installs Composer dependencies, creates `.env` from `.env.example` when it is missing, generates an application key when needed, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start.
+The one-shot `setup` service installs Composer dependencies, creates `.env` from `.env.example` when it is missing, prepares Laravel storage directories, generates an application key when needed, clears cached bootstrap state, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start. The `ready` service waits for nginx and Vite health checks, so `docker compose up -d` returns only after the app is ready to open.
 
 For a fresh database reset:
 
@@ -64,7 +64,7 @@ docker compose run --rm php-fpm php artisan test
 docker compose run --rm node-vite npm run build
 docker compose run --rm node-vite npm run lint
 docker compose run --rm node-vite npm run test
-curl -s http://127.0.0.1:8080/api/v1/health
+curl -s http://127.0.0.1:8088/api/v1/health
 ```
 
 ## Status Rules
