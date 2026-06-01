@@ -2,35 +2,46 @@
 
 namespace App\Actions\Proxies;
 
+use App\Application\Proxies\Data\UpdateProxyCommand;
 use App\Enums\ProxyCheckSource;
+use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Exceptions\DuplicateProxyException;
 use App\Models\ProxyServer;
 use App\Support\UniqueConstraintViolationDetector;
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Database\QueryException;
 use Illuminate\Support\Facades\DB;
 
+/**
+ * @phpstan-type SensitiveKey 'scheme'|'host'|'port'|'username'|'password'
+ */
 class UpdateProxyAction
 {
+    /**
+     * @var list<SensitiveKey>
+     */
     private const SENSITIVE_KEYS = ['scheme', 'host', 'port', 'username', 'password'];
 
     public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck) {}
 
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    public function execute(ProxyServer $proxy, array $data): ProxyServer
+    public function execute(ProxyServer $proxy, UpdateProxyCommand $command): ProxyServer
     {
-        $sensitiveChanged = $this->hasSensitiveKey($data);
+        $data = $command->toPersistenceArray();
+        $currentPassword = $command->has('password') ? $this->safeCurrentPassword($proxy) : null;
+        $passwordUnreadable = $currentPassword === false;
+        $passwordChanged = $command->has('password')
+            && ($passwordUnreadable || $currentPassword !== $this->normalizeNullableString($command->value('password')));
+        $sensitiveChanged = $this->hasSensitiveChange($proxy, $command, $passwordChanged);
 
-        if (! array_key_exists('password', $data)) {
+        if ($command->has('password') && ! $passwordChanged) {
             unset($data['password']);
         }
 
-        $nextScheme = $data['scheme'] ?? $proxy->scheme;
-        $nextHost = $data['host'] ?? $proxy->host;
-        $nextPort = (int) ($data['port'] ?? $proxy->port);
-        $nextUsername = array_key_exists('username', $data) ? $data['username'] : $proxy->username;
+        $nextScheme = $command->has('scheme') ? $command->value('scheme') : $proxy->scheme;
+        $nextHost = $command->has('host') ? $command->value('host') : $proxy->host;
+        $nextPort = $command->has('port') ? (int) $command->value('port') : (int) $proxy->port;
+        $nextUsername = $command->has('username') ? $command->value('username') : $proxy->username;
         $data['identity_hash'] = ProxyServer::identityHashFor($nextScheme, $nextHost, $nextPort, $nextUsername);
 
         if ($sensitiveChanged) {
@@ -40,8 +51,14 @@ class UpdateProxyAction
             $data['failure_reason'] = null;
         }
 
-        return DB::transaction(function () use ($proxy, $data, $sensitiveChanged): ProxyServer {
+        return DB::transaction(function () use ($proxy, $data, $sensitiveChanged, $passwordUnreadable): ProxyServer {
             try {
+                if ($passwordUnreadable && array_key_exists('password', $data) && $data['password'] !== null) {
+                    $attributes = $proxy->getAttributes();
+                    $attributes['password'] = null;
+                    $proxy->setRawAttributes($attributes, true);
+                }
+
                 $proxy->fill($data)->save();
             } catch (QueryException $exception) {
                 if (UniqueConstraintViolationDetector::detects($exception)) {
@@ -59,17 +76,70 @@ class UpdateProxyAction
         });
     }
 
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    private function hasSensitiveKey(array $data): bool
+    private function hasSensitiveChange(ProxyServer $proxy, UpdateProxyCommand $command, bool $passwordChanged): bool
     {
         foreach (self::SENSITIVE_KEYS as $key) {
-            if (array_key_exists($key, $data)) {
+            if (! $command->has($key)) {
+                continue;
+            }
+
+            if ($key === 'password') {
+                return $passwordChanged;
+            }
+
+            if ($this->sensitiveValue($proxy, $key) !== $this->normalizeSensitiveValue($key, $command->value($key))) {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /**
+     * @param  SensitiveKey  $key
+     */
+    private function sensitiveValue(ProxyServer $proxy, string $key): mixed
+    {
+        return match ($key) {
+            'scheme' => $this->normalizeScheme($proxy->scheme),
+            'host' => $proxy->host,
+            'port' => (int) $proxy->port,
+            'username' => $this->normalizeNullableString($proxy->username),
+            'password' => $this->safeCurrentPassword($proxy),
+        };
+    }
+
+    /**
+     * @param  SensitiveKey  $key
+     */
+    private function normalizeSensitiveValue(string $key, mixed $value): mixed
+    {
+        return match ($key) {
+            'scheme' => $this->normalizeScheme($value),
+            'host' => (string) $value,
+            'port' => (int) $value,
+            'username', 'password' => $this->normalizeNullableString($value),
+        };
+    }
+
+    private function safeCurrentPassword(ProxyServer $proxy): string|null|false
+    {
+        try {
+            return $this->normalizeNullableString($proxy->password);
+        } catch (DecryptException) {
+            return false;
+        }
+    }
+
+    private function normalizeScheme(mixed $scheme): string
+    {
+        return $scheme instanceof ProxyScheme ? $scheme->value : (string) $scheme;
+    }
+
+    private function normalizeNullableString(mixed $value): ?string
+    {
+        $value = $value === null ? null : (string) $value;
+
+        return $value === '' ? null : $value;
     }
 }

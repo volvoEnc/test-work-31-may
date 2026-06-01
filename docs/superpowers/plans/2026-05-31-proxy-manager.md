@@ -31,7 +31,7 @@ Scaffold-generated Laravel files will be created first, then modified. New proje
 - `app/Models/ProxyServer.php`: proxy settings and latest status model.
 - `app/Models/ProxyCheck.php`: proxy check history model.
 - `app/Rules/ProxyHostRule.php`: host validation.
-- `app/Data/ProxyCheckResult.php`: immutable checker result DTO.
+- `app/Application/Proxies/Data/ProxyCheckResult.php`: immutable checker result DTO.
 - `app/Services/ProxyChecker/*.php`: proxy URI factory, checker interface, Laravel HTTP checker.
 - `app/Exceptions/DuplicateProxyException.php`: duplicate identity domain exception.
 - `app/Actions/Proxies/*.php`: write and scheduling use cases.
@@ -894,7 +894,7 @@ Expected: commit succeeds.
 ## Task 4: Implement Proxy Checker Services
 
 **Files:**
-- Create: `app/Data/ProxyCheckResult.php`
+- Create: `app/Application/Proxies/Data/ProxyCheckResult.php`
 - Create: `app/Services/ProxyChecker/ProxyCheckerInterface.php`
 - Create: `app/Services/ProxyChecker/ProxyUriFactory.php`
 - Create: `app/Services/ProxyChecker/LaravelHttpProxyChecker.php`
@@ -904,12 +904,12 @@ Expected: commit succeeds.
 
 - [ ] **Step 1: Create result DTO**
 
-Create `app/Data/ProxyCheckResult.php`:
+Create `app/Application/Proxies/Data/ProxyCheckResult.php`:
 
 ```php
 <?php
 
-namespace App\Data;
+namespace App\Application\Proxies\Data;
 
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyStatus;
@@ -943,7 +943,7 @@ Create `app/Services/ProxyChecker/ProxyCheckerInterface.php`:
 
 namespace App\Services\ProxyChecker;
 
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Models\ProxyServer;
 
 interface ProxyCheckerInterface
@@ -1005,7 +1005,7 @@ Create `app/Services/ProxyChecker/LaravelHttpProxyChecker.php`:
 
 namespace App\Services\ProxyChecker;
 
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
@@ -1236,7 +1236,7 @@ Expected: all service tests pass.
 Run:
 
 ```bash
-git add app/Data app/Services app/Providers/AppServiceProvider.php tests/Unit/ProxyUriFactoryTest.php tests/Unit/LaravelHttpProxyCheckerTest.php
+git add app/Application/Proxies/Data app/Services app/Providers/AppServiceProvider.php tests/Unit/ProxyUriFactoryTest.php tests/Unit/LaravelHttpProxyCheckerTest.php
 git commit -m "feat: add proxy checker services"
 ```
 
@@ -1288,7 +1288,7 @@ Create `app/Actions/Proxies/ApplyProxyCheckResultAction.php`:
 
 namespace App\Actions\Proxies;
 
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
@@ -1524,7 +1524,7 @@ Create `app/Jobs/CheckProxyStatusJob.php`:
 namespace App\Jobs;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
@@ -1615,7 +1615,7 @@ namespace App\Jobs;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\ScheduleProxyCheckAction;
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
@@ -1743,7 +1743,7 @@ Create `tests/Unit/ApplyProxyCheckResultActionTest.php`:
 <?php
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;

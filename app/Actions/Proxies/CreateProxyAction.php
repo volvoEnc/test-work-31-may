@@ -2,6 +2,7 @@
 
 namespace App\Actions\Proxies;
 
+use App\Application\Proxies\Data\CreateProxyCommand;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Exceptions\DuplicateProxyException;
@@ -14,11 +15,9 @@ class CreateProxyAction
 {
     public function __construct(private readonly ScheduleProxyCheckAction $scheduleProxyCheck) {}
 
-    /**
-     * @param  array<string, mixed>  $data
-     */
-    public function execute(array $data): ProxyServer
+    public function execute(CreateProxyCommand $command): ProxyServer
     {
+        $data = $command->toPersistenceArray();
         $data['identity_hash'] = ProxyServer::identityHashFor(
             $data['scheme'],
             $data['host'],

@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Exceptions\InvalidProxyCheckStatusException;

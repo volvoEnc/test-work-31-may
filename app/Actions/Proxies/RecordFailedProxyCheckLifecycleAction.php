@@ -2,7 +2,7 @@
 
 namespace App\Actions\Proxies;
 
-use App\Data\ProxyCheckGuard;
+use App\Support\Proxies\ProxyCheckGuard;
 use App\Enums\ProxyCheckSource;
 use App\Models\ProxyServer;
 use Throwable;

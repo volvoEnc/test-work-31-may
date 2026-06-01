@@ -2,7 +2,7 @@
 
 namespace App\Services\ProxyChecker;
 
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;

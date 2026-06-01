@@ -2,7 +2,7 @@
 
 namespace App\Services\ProxyChecker;
 
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Models\ProxyServer;
 
 interface ProxyCheckerInterface

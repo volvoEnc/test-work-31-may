@@ -5,7 +5,7 @@ namespace Tests\Unit;
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\DispatchDueProxyChecksAction;
 use App\Actions\Proxies\ResolveStaleProxyChecksAction;
-use App\Data\ApplyProxyCheckResultCommand;
+use App\Application\Proxies\Data\ApplyProxyCheckResultCommand;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;

@@ -5,8 +5,7 @@ namespace Tests\Unit;
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\RecordFailedProxyCheckAction;
 use App\Actions\Proxies\RunProxyCheckAction;
-use App\Data\ProxyCheckGuard;
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Jobs\CheckProxyStatusJob;
@@ -15,10 +14,12 @@ use App\Models\ProxyServer;
 use App\Services\ProxyChecker\ProxyCheckerInterface;
 use App\Services\ProxyChecker\ProxyUriFactory;
 use App\Support\ProxyFailureSanitizer;
+use App\Support\Proxies\ProxyCheckGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Contracts\Queue\ShouldBeUniqueUntilProcessing;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\DB;
+use Mockery;
 use ReflectionMethod;
 use RuntimeException;
 use Tests\TestCase;
@@ -66,6 +67,19 @@ class CheckProxyStatusJobTest extends TestCase
             'ProxyCheckerInterface',
             $jobSource,
         );
+    }
+
+    public function test_handle_passes_queued_generation_to_action_as_contract_metadata(): void
+    {
+        $job = new CheckProxyStatusJob(123, ProxyCheckSource::Manual, 'queued-generation', 'queued-token');
+        $runProxyCheck = Mockery::mock(RunProxyCheckAction::class);
+
+        $runProxyCheck
+            ->shouldReceive('execute')
+            ->once()
+            ->with(123, ProxyCheckSource::Manual, 'queued-generation', 'queued-token');
+
+        $job->handle($runProxyCheck);
     }
 
     public function test_failed_lifecycle_service_locator_is_kept_out_of_the_domain_action(): void

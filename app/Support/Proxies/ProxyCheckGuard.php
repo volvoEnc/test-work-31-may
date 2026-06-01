@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Data;
+namespace App\Support\Proxies;
 
 use App\Enums\ProxyCheckSource;
 use App\Models\ProxyServer;

@@ -30,7 +30,7 @@ class ProxyController extends Controller
 
     public function store(StoreProxyRequest $request, CreateProxyAction $createProxy): JsonResponse
     {
-        $proxy = $createProxy->execute($request->validated());
+        $proxy = $createProxy->execute($request->toCommand());
 
         return (new ProxyResource($proxy))
             ->response()
@@ -44,7 +44,7 @@ class ProxyController extends Controller
 
     public function update(UpdateProxyRequest $request, ProxyServer $proxy, UpdateProxyAction $updateProxy): JsonResponse
     {
-        $proxy = $updateProxy->execute($proxy, $request->validated());
+        $proxy = $updateProxy->execute($proxy, $request->toCommand());
 
         return (new ProxyResource($proxy))->response();
     }

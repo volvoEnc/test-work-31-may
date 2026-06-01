@@ -3,14 +3,14 @@
 namespace Tests\Unit;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
-use App\Data\ApplyProxyCheckResultCommand;
-use App\Data\ProxyCheckGuard;
-use App\Data\ProxyCheckResult;
+use App\Application\Proxies\Data\ApplyProxyCheckResultCommand;
+use App\Application\Proxies\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyCheck;
 use App\Models\ProxyServer;
+use App\Support\Proxies\ProxyCheckGuard;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use InvalidArgumentException;

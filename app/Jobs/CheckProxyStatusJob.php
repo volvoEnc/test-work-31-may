@@ -47,7 +47,7 @@ class CheckProxyStatusJob implements ShouldBeUniqueUntilProcessing, ShouldQueue
 
     public function handle(RunProxyCheckAction $runProxyCheck): void
     {
-        $runProxyCheck->execute($this->proxyId, $this->source, $this->checkJobToken);
+        $runProxyCheck->execute($this->proxyId, $this->source, $this->checkGeneration, $this->checkJobToken);
     }
 
     public function failed(Throwable $exception): void

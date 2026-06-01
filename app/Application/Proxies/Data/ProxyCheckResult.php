@@ -1,7 +1,8 @@
 <?php
 
-namespace App\Data;
+namespace App\Application\Proxies\Data;
 
+use App\Domain\Proxies\PersistedProxyCheckStatus;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyStatus;
 use Carbon\CarbonImmutable;

@@ -1,9 +1,10 @@
 <?php
 
-namespace App\Data;
+namespace App\Application\Proxies\Data;
 
 use App\Enums\ProxyCheckSource;
 use App\Models\ProxyServer;
+use App\Support\Proxies\ProxyCheckGuard;
 
 final readonly class ApplyProxyCheckResultCommand
 {

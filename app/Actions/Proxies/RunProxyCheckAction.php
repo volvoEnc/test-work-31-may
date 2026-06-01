@@ -2,8 +2,8 @@
 
 namespace App\Actions\Proxies;
 
-use App\Data\ApplyProxyCheckResultCommand;
-use App\Data\ProxyCheckGuard;
+use App\Application\Proxies\Data\ApplyProxyCheckResultCommand;
+use App\Support\Proxies\ProxyCheckGuard;
 use App\Enums\ProxyCheckSource;
 use App\Models\ProxyServer;
 use App\Services\ProxyChecker\ProxyCheckerInterface;
@@ -17,8 +17,17 @@ class RunProxyCheckAction
         private readonly RecordFailedProxyCheckAction $recordFailedProxyCheck,
     ) {}
 
-    public function execute(int $proxyId, ProxyCheckSource $source, string $checkJobToken): void
+    public function execute(
+        int $proxyId,
+        ProxyCheckSource $source,
+        ?string $queuedGeneration,
+        string $checkJobToken,
+    ): void
     {
+        // The queued generation is payload metadata, not stale-task protection.
+        // Jobs are unique/coalesced by proxy, so the current persisted generation
+        // remains authoritative and stale payloads claim whichever generation is
+        // active when this worker reaches the database.
         $proxy = ProxyServer::query()->find($proxyId);
 
         if (! $proxy instanceof ProxyServer) {

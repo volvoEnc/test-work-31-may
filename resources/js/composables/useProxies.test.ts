@@ -132,6 +132,30 @@ describe('useProxies manual check polling', () => {
     wrapper.unmount();
   });
 
+  it('does not reschedule focused polling after unmount while a focused load is pending', async () => {
+    let resolveList!: (value: { data: ProxyServer[]; meta: PaginationMeta }) => void;
+    proxyApiMock.listProxies.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveList = resolve;
+        }),
+    );
+
+    const { wrapper, proxies } = await mountUseProxies();
+
+    await expect(proxies.check(7)).resolves.toBe(true);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(1);
+
+    wrapper.unmount();
+    resolveList({ data: [proxy('checking')], meta });
+    await Promise.resolve();
+
+    await vi.advanceTimersByTimeAsync(3000);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps polling refresh-all while any visible proxy is checking', async () => {
     proxyApiMock.checkAllProxies.mockResolvedValue({ data: { queued: true, candidate_count: 1 } });
     proxyApiMock.listProxies
@@ -152,6 +176,27 @@ describe('useProxies manual check polling', () => {
 
     await vi.advanceTimersByTimeAsync(3000);
     expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(3);
+
+    wrapper.unmount();
+  });
+
+  it('does not focused-poll check-all when immediate reload has no visible checking proxies', async () => {
+    proxyApiMock.checkAllProxies.mockResolvedValue({ data: { queued: true, candidate_count: 1 } });
+    proxyApiMock.listProxies.mockResolvedValue({ data: [proxy('online')], meta });
+
+    const { wrapper, proxies } = await mountUseProxies();
+
+    await expect(proxies.checkAll()).resolves.toBe(true);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(28999);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(1);
+    expect(proxyApiMock.listProxies).toHaveBeenCalledTimes(2);
 
     wrapper.unmount();
   });

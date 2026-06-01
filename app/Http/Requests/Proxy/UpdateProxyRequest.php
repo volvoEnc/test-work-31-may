@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Proxy;
 
+use App\Application\Proxies\Data\UpdateProxyCommand;
 use App\Enums\ProxyScheme;
 use App\Rules\ProxyHostRule;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -28,5 +29,20 @@ class UpdateProxyRequest extends FormRequest
             'username' => ['sometimes', 'nullable', 'string', 'max:255'],
             'password' => ['sometimes', 'nullable', 'string', 'max:2048'],
         ];
+    }
+
+    public function toCommand(): UpdateProxyCommand
+    {
+        $data = $this->validated();
+
+        if (array_key_exists('scheme', $data)) {
+            $data['scheme'] = ProxyScheme::from($data['scheme']);
+        }
+
+        if (array_key_exists('port', $data)) {
+            $data['port'] = (int) $data['port'];
+        }
+
+        return new UpdateProxyCommand($data);
     }
 }

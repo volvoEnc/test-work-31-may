@@ -2,7 +2,7 @@
 
 namespace Tests\Unit;
 
-use App\Data\ProxyIdentity;
+use App\Domain\Proxies\ProxyIdentity;
 use App\Enums\ProxyScheme;
 use App\Models\ProxyServer;
 use Illuminate\Foundation\Testing\RefreshDatabase;

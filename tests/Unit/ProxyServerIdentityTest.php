@@ -2,8 +2,8 @@
 
 namespace Tests\Unit;
 
-use App\Data\ProxyEndpoint;
-use App\Data\ProxyIdentity;
+use App\Domain\Proxies\ProxyEndpoint;
+use App\Domain\Proxies\ProxyIdentity;
 use App\Enums\ProxyScheme;
 use App\Models\ProxyServer;
 use PHPUnit\Framework\TestCase;

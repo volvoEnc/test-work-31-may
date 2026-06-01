@@ -2,6 +2,7 @@
 
 namespace App\Http\Requests\Proxy;
 
+use App\Application\Proxies\Data\CreateProxyCommand;
 use App\Enums\ProxyScheme;
 use App\Rules\ProxyHostRule;
 use Illuminate\Contracts\Validation\ValidationRule;
@@ -28,5 +29,19 @@ class StoreProxyRequest extends FormRequest
             'username' => ['nullable', 'string', 'max:255'],
             'password' => ['nullable', 'string', 'max:2048'],
         ];
+    }
+
+    public function toCommand(): CreateProxyCommand
+    {
+        $data = $this->validated();
+
+        return new CreateProxyCommand(
+            name: $data['name'] ?? null,
+            scheme: ProxyScheme::from($data['scheme']),
+            host: $data['host'],
+            port: (int) $data['port'],
+            username: $data['username'] ?? null,
+            password: $data['password'] ?? null,
+        );
     }
 }

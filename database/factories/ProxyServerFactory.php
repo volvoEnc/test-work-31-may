@@ -2,7 +2,7 @@
 
 namespace Database\Factories;
 
-use App\Data\ProxyIdentity;
+use App\Domain\Proxies\ProxyIdentity;
 use App\Enums\ProxyScheme;
 use App\Enums\ProxyStatus;
 use App\Models\ProxyServer;
