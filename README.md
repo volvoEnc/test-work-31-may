@@ -5,10 +5,9 @@ Dockerized Laravel 12 and Vue 3 application for managing proxy servers and async
 ## Services
 
 - Backend: http://localhost:8088
-- Vite dev server: http://localhost:5173
 - MySQL: localhost:3306
 
-Published ports bind to `127.0.0.1` for local development. `APP_HTTP_PORT`, `VITE_DEV_HOST`, and `VITE_DEV_PORT` can be changed in `.env` if another local project has already annexed the port with imperial confidence. Add authentication and review the port bindings before exposing the service outside a trusted machine.
+Published ports bind to `127.0.0.1` for local development. `APP_HTTP_PORT` and `DB_FORWARD_PORT` can be changed in `.env` if another local project has already annexed the port with imperial confidence. Add authentication and review the port bindings before exposing the service outside a trusted machine.
 
 ## Setup
 
@@ -16,7 +15,13 @@ Published ports bind to `127.0.0.1` for local development. `APP_HTTP_PORT`, `VIT
 docker compose up -d
 ```
 
-The one-shot `setup` service installs Composer dependencies, creates `.env` from `.env.example` when it is missing, prepares Laravel storage directories, generates an application key when needed, clears cached bootstrap state, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start. The `ready` service waits for nginx and Vite health checks, so `docker compose up -d` returns only after the app is ready to open.
+The application is packaged into the local `proxy-manager-app:local` image. Composer dependencies and the Vue production bundle are built into that image, then Docker Compose reuses it for nginx, php-fpm, queue, scheduler, setup, and readiness checks. Runtime configuration still comes from Compose environment variables, because baking real `.env` secrets into an image is the sort of shortcut that later asks for tribute. The one-shot `setup` service prepares Laravel storage directories, clears cached bootstrap state, runs migrations, and writes `storage/framework/setup-complete` before long-lived PHP services start. The `ready` service waits for nginx health checks, so `docker compose up -d` returns only after the app is ready to open.
+
+After changing application code, rebuild the packaged image:
+
+```bash
+docker compose up -d --build
+```
 
 For a fresh database reset:
 
@@ -60,10 +65,9 @@ PROXY_CHECK_UNIQUE_FOR_SECONDS=300
 ## Verification
 
 ```bash
-docker compose run --rm php-fpm php artisan test
-docker compose run --rm node-vite npm run build
-docker compose run --rm node-vite npm run lint
-docker compose run --rm node-vite npm run test
+docker compose build php-fpm
+docker compose up -d
+docker compose exec php-fpm php artisan test
 curl -s http://127.0.0.1:8088/api/v1/health
 ```
 
