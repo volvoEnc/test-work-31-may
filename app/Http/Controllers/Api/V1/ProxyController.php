@@ -4,16 +4,15 @@ namespace App\Http\Controllers\Api\V1;
 
 use App\Actions\Proxies\CreateProxyAction;
 use App\Actions\Proxies\DeleteProxyAction;
+use App\Actions\Proxies\QueueAllProxyChecksAction;
 use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Actions\Proxies\UpdateProxyAction;
 use App\Enums\ProxyCheckSource;
-use App\Exceptions\DuplicateProxyException;
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Proxy\IndexProxyRequest;
 use App\Http\Requests\Proxy\StoreProxyRequest;
 use App\Http\Requests\Proxy\UpdateProxyRequest;
 use App\Http\Resources\ProxyResource;
-use App\Jobs\ScheduleAllProxyChecksJob;
 use App\Models\ProxyServer;
 use App\Queries\ProxyIndexQuery;
 use Illuminate\Http\JsonResponse;
@@ -31,11 +30,7 @@ class ProxyController extends Controller
 
     public function store(StoreProxyRequest $request, CreateProxyAction $createProxy): JsonResponse
     {
-        try {
-            $proxy = $createProxy->execute($request->validated());
-        } catch (DuplicateProxyException) {
-            return $this->duplicateProxyResponse();
-        }
+        $proxy = $createProxy->execute($request->validated());
 
         return (new ProxyResource($proxy))
             ->response()
@@ -49,11 +44,7 @@ class ProxyController extends Controller
 
     public function update(UpdateProxyRequest $request, ProxyServer $proxy, UpdateProxyAction $updateProxy): JsonResponse
     {
-        try {
-            $proxy = $updateProxy->execute($proxy, $request->validated());
-        } catch (DuplicateProxyException) {
-            return $this->duplicateProxyResponse();
-        }
+        $proxy = $updateProxy->execute($proxy, $request->validated());
 
         return (new ProxyResource($proxy))->response();
     }
@@ -79,11 +70,9 @@ class ProxyController extends Controller
         ], Response::HTTP_ACCEPTED);
     }
 
-    public function checkAll(): JsonResponse
+    public function checkAll(QueueAllProxyChecksAction $queueAllProxyChecks): JsonResponse
     {
-        $count = ProxyServer::query()->count();
-
-        ScheduleAllProxyChecksJob::dispatch(ProxyCheckSource::Manual)->afterCommit();
+        $count = $queueAllProxyChecks->execute(ProxyCheckSource::Manual);
 
         return response()->json([
             'data' => [
@@ -91,15 +80,5 @@ class ProxyController extends Controller
                 'candidate_count' => $count,
             ],
         ], Response::HTTP_ACCEPTED);
-    }
-
-    private function duplicateProxyResponse(): JsonResponse
-    {
-        return response()->json([
-            'message' => 'Proxy already exists.',
-            'errors' => [
-                'host' => ['A proxy with the same scheme, host, port and username already exists.'],
-            ],
-        ], Response::HTTP_CONFLICT);
     }
 }

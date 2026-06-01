@@ -3,7 +3,8 @@
 namespace Tests\Unit;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
-use App\Actions\Proxies\ScheduleProxyCheckAction;
+use App\Actions\Proxies\DispatchDueProxyChecksAction;
+use App\Actions\Proxies\ResolveStaleProxyChecksAction;
 use App\Data\ApplyProxyCheckResultCommand;
 use App\Enums\ProxyCheckErrorCode;
 use App\Enums\ProxyCheckSource;
@@ -16,11 +17,31 @@ use App\Support\ProxyFailureSanitizer;
 use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Illuminate\Support\Facades\Bus;
+use ReflectionMethod;
 use Tests\TestCase;
 
 class DispatchDueProxyChecksJobTest extends TestCase
 {
     use RefreshDatabase;
+
+    private function handleJob(DispatchDueProxyChecksJob $job): void
+    {
+        app()->call([$job, 'handle']);
+    }
+
+    public function test_job_delegates_stale_resolution_and_due_dispatch_without_sql_id_garland(): void
+    {
+        $handle = new ReflectionMethod(DispatchDueProxyChecksJob::class, 'handle');
+        $parameterTypes = array_map(
+            static fn ($parameter): ?string => $parameter->getType()?->getName(),
+            $handle->getParameters(),
+        );
+        $jobSource = file_get_contents(app_path('Jobs/DispatchDueProxyChecksJob.php'));
+
+        $this->assertSame([ResolveStaleProxyChecksAction::class, DispatchDueProxyChecksAction::class], $parameterTypes);
+        $this->assertStringNotContainsString('$staleProxyIds', $jobSource);
+        $this->assertStringNotContainsString('whereNotIn', $jobSource);
+    }
 
     public function test_it_marks_stale_checking_proxies_offline_without_rescheduling_them(): void
     {
@@ -36,10 +57,7 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'last_checked_at' => now()->subHour(),
         ]);
 
-        app(DispatchDueProxyChecksJob::class)->handle(
-            app(ScheduleProxyCheckAction::class),
-            app(ApplyProxyCheckResultAction::class),
-        );
+        $this->handleJob(app(DispatchDueProxyChecksJob::class));
 
         $staleProxy->refresh();
         $this->assertSame(ProxyStatus::Offline, $staleProxy->status);
@@ -74,10 +92,7 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'last_checked_at' => now()->subHour(),
         ]);
 
-        app(DispatchDueProxyChecksJob::class)->handle(
-            app(ScheduleProxyCheckAction::class),
-            app(ApplyProxyCheckResultAction::class),
-        );
+        $this->handleJob(app(DispatchDueProxyChecksJob::class));
 
         $staleProxy->refresh();
         $check = ProxyCheck::query()->sole();
@@ -118,10 +133,7 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'last_checked_at' => now()->subHour(),
         ]);
 
-        app(DispatchDueProxyChecksJob::class)->handle(
-            app(ScheduleProxyCheckAction::class),
-            app(ApplyProxyCheckResultAction::class),
-        );
+        $this->handleJob(app(DispatchDueProxyChecksJob::class));
 
         Bus::assertDispatched(CheckProxyStatusJob::class, 2);
         Bus::assertDispatched(CheckProxyStatusJob::class, fn (CheckProxyStatusJob $job): bool => $job->proxyId === $neverChecked->id
@@ -156,8 +168,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'last_checked_at' => now()->subHour(),
         ]);
 
-        app(DispatchDueProxyChecksJob::class)->handle(
-            app(ScheduleProxyCheckAction::class),
+        $this->app->instance(
+            ApplyProxyCheckResultAction::class,
             new class(app(ProxyFailureSanitizer::class)) extends ApplyProxyCheckResultAction
             {
                 public function execute(
@@ -173,6 +185,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
                 }
             },
         );
+
+        $this->handleJob(app(DispatchDueProxyChecksJob::class));
 
         $staleProxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $staleProxy->status);
@@ -198,8 +212,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
             'last_checked_at' => now()->subHour(),
         ]);
 
-        app(DispatchDueProxyChecksJob::class)->handle(
-            app(ScheduleProxyCheckAction::class),
+        $this->app->instance(
+            ApplyProxyCheckResultAction::class,
             new class(app(ProxyFailureSanitizer::class)) extends ApplyProxyCheckResultAction
             {
                 public function execute(
@@ -213,6 +227,8 @@ class DispatchDueProxyChecksJobTest extends TestCase
                 }
             },
         );
+
+        $this->handleJob(app(DispatchDueProxyChecksJob::class));
 
         $staleProxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $staleProxy->status);

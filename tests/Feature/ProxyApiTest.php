@@ -2,6 +2,7 @@
 
 namespace Tests\Feature;
 
+use App\Actions\Proxies\QueueAllProxyChecksAction;
 use App\Actions\Proxies\ScheduleProxyCheckAction;
 use App\Enums\ProxyCheckSource;
 use App\Enums\ProxyScheme;
@@ -227,6 +228,17 @@ class ProxyApiTest extends TestCase
             ->assertJsonPath('errors.host.0', 'A proxy with the same scheme, host, port and username already exists.');
     }
 
+    public function test_duplicate_proxy_exception_owns_its_http_rendering(): void
+    {
+        $exceptionSource = file_get_contents(app_path('Exceptions/DuplicateProxyException.php'));
+        $controllerSource = file_get_contents(app_path('Http/Controllers/Api/V1/ProxyController.php'));
+
+        $this->assertStringContainsString('function render', $exceptionSource);
+        $this->assertStringContainsString('HTTP_CONFLICT', $exceptionSource);
+        $this->assertStringNotContainsString('catch (DuplicateProxyException', $controllerSource);
+        $this->assertStringNotContainsString('duplicateProxyResponse', $controllerSource);
+    }
+
     public function test_it_rejects_duplicate_proxy_identity_on_update(): void
     {
         Bus::fake();
@@ -363,6 +375,15 @@ class ProxyApiTest extends TestCase
         });
         Bus::assertDispatched(ScheduleAllProxyChecksJob::class, 1);
         Bus::assertNotDispatched(CheckProxyStatusJob::class);
+    }
+
+    public function test_check_all_delegates_counting_and_dispatch_to_an_action(): void
+    {
+        $controllerSource = file_get_contents(app_path('Http/Controllers/Api/V1/ProxyController.php'));
+
+        $this->assertStringContainsString(QueueAllProxyChecksAction::class, $controllerSource);
+        $this->assertStringNotContainsString('ProxyServer::query()->count()', $controllerSource);
+        $this->assertStringNotContainsString('ScheduleAllProxyChecksJob::dispatch', $controllerSource);
     }
 
     public function test_it_returns_proxy_check_history(): void

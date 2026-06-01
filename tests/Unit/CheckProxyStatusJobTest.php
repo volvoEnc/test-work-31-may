@@ -4,6 +4,7 @@ namespace Tests\Unit;
 
 use App\Actions\Proxies\ApplyProxyCheckResultAction;
 use App\Actions\Proxies\RecordFailedProxyCheckAction;
+use App\Actions\Proxies\RunProxyCheckAction;
 use App\Data\ProxyCheckGuard;
 use App\Data\ProxyCheckResult;
 use App\Enums\ProxyCheckSource;
@@ -34,6 +35,11 @@ class CheckProxyStatusJobTest extends TestCase
         $this->assertSame('proxy:123', $job->uniqueId());
     }
 
+    private function handleJob(CheckProxyStatusJob $job): void
+    {
+        app()->call([$job, 'handle']);
+    }
+
     public function test_job_dependencies_are_explicit_without_service_locator_calls(): void
     {
         $handle = new ReflectionMethod(CheckProxyStatusJob::class, 'handle');
@@ -41,16 +47,35 @@ class CheckProxyStatusJobTest extends TestCase
             static fn ($parameter): ?string => $parameter->getType()?->getName(),
             $handle->getParameters(),
         );
+        $jobSource = file_get_contents(app_path('Jobs/CheckProxyStatusJob.php'));
 
-        $this->assertContains(RecordFailedProxyCheckAction::class, $parameterTypes);
+        $this->assertSame([RunProxyCheckAction::class], $parameterTypes);
         $this->assertStringNotContainsString(
             'app(',
-            file_get_contents(app_path('Jobs/CheckProxyStatusJob.php')),
+            $jobSource,
         );
         $this->assertStringNotContainsString(
             'resolve(',
-            file_get_contents(app_path('Jobs/CheckProxyStatusJob.php')),
+            $jobSource,
         );
+        $this->assertStringNotContainsString(
+            'claimCurrentGeneration',
+            $jobSource,
+        );
+        $this->assertStringNotContainsString(
+            'ProxyCheckerInterface',
+            $jobSource,
+        );
+    }
+
+    public function test_failed_lifecycle_service_locator_is_kept_out_of_the_domain_action(): void
+    {
+        $actionSource = file_get_contents(app_path('Actions/Proxies/RecordFailedProxyCheckLifecycleAction.php'));
+        $jobSource = file_get_contents(app_path('Jobs/CheckProxyStatusJob.php'));
+
+        $this->assertStringNotContainsString('static function record', $actionSource);
+        $this->assertStringNotContainsString('app(self::class)', $actionSource);
+        $this->assertStringContainsString('FailedProxyCheckLifecycleHandler', $jobSource);
     }
 
     public function test_stale_payload_generation_job_checks_current_active_generation(): void
@@ -86,11 +111,11 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        app(CheckProxyStatusJob::class, [
+        $this->handleJob(app(CheckProxyStatusJob::class, [
             'proxyId' => $proxy->id,
             'source' => ProxyCheckSource::Manual,
             'checkGeneration' => 'old-generation',
-        ])->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        ]));
 
         $proxy->refresh();
         $this->assertSame('new-generation', $checkedGeneration);
@@ -138,8 +163,7 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'old-generation', $jobToken))
-            ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'old-generation', $jobToken));
 
         $check = ProxyCheck::query()->sole();
         $this->assertSame($jobToken, $claimedToken);
@@ -197,8 +221,7 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'claim-source-token'))
-            ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'claim-source-token'));
 
         $proxy->refresh();
         $this->assertTrue($sourceChanged);
@@ -248,8 +271,7 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'current-worker-token'))
-            ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'current-worker-token'));
 
         $proxy->refresh();
         $this->assertFalse($checkerWasCalled);
@@ -298,8 +320,7 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'apply-source-token'))
-            ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'apply-source-token'));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
@@ -347,8 +368,7 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'original-token'))
-            ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'original-token'));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
@@ -394,8 +414,7 @@ class CheckProxyStatusJobTest extends TestCase
         });
 
         try {
-            (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'failed-source-token'))
-                ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'failed-source-token'));
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);
@@ -449,7 +468,7 @@ class CheckProxyStatusJobTest extends TestCase
         $job = new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', $jobToken);
 
         try {
-            $job->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob($job);
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);
@@ -503,8 +522,7 @@ class CheckProxyStatusJobTest extends TestCase
         });
 
         try {
-            (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'original-token'))
-                ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'current-generation', 'original-token'));
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);
@@ -558,8 +576,7 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        (new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Manual, 'current-generation', $jobToken))
-            ->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        $this->handleJob(new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Manual, 'current-generation', $jobToken));
 
         $proxy->refresh();
         $check = ProxyCheck::query()->sole();
@@ -606,11 +623,11 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        app(CheckProxyStatusJob::class, [
+        $this->handleJob(app(CheckProxyStatusJob::class, [
             'proxyId' => $proxy->id,
             'source' => ProxyCheckSource::Auto,
             'checkGeneration' => null,
-        ])->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        ]));
 
         $proxy->refresh();
         $this->assertFalse($checkerWasCalled);
@@ -655,11 +672,11 @@ class CheckProxyStatusJobTest extends TestCase
             };
         });
 
-        app(CheckProxyStatusJob::class, [
+        $this->handleJob(app(CheckProxyStatusJob::class, [
             'proxyId' => $proxy->id,
             'source' => ProxyCheckSource::Auto,
             'checkGeneration' => 'current-generation',
-        ])->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+        ]));
 
         $proxy->refresh();
         $this->assertSame(ProxyStatus::Checking, $proxy->status);
@@ -695,7 +712,7 @@ class CheckProxyStatusJobTest extends TestCase
         $job = new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Manual, 'old-generation');
 
         try {
-            $job->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob($job);
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);
@@ -872,7 +889,7 @@ class CheckProxyStatusJobTest extends TestCase
         $job = new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'generation-a', $jobToken);
 
         try {
-            $job->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob($job);
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);
@@ -917,7 +934,7 @@ class CheckProxyStatusJobTest extends TestCase
         $job = new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, null);
 
         try {
-            $job->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob($job);
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);
@@ -969,7 +986,7 @@ class CheckProxyStatusJobTest extends TestCase
         $job = new CheckProxyStatusJob($proxy->id, ProxyCheckSource::Auto, 'generation-a');
 
         try {
-            $job->handle(app(ProxyCheckerInterface::class), app(ApplyProxyCheckResultAction::class), app(RecordFailedProxyCheckAction::class));
+            $this->handleJob($job);
             $this->fail('The proxy check exception was not thrown.');
         } catch (RuntimeException $caught) {
             $this->assertSame($exception, $caught);

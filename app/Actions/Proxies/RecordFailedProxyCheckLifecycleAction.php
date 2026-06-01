@@ -13,11 +13,6 @@ class RecordFailedProxyCheckLifecycleAction
         private readonly RecordFailedProxyCheckAction $recordFailedProxyCheck,
     ) {}
 
-    public static function record(int $proxyId, ProxyCheckSource $source, string $checkJobToken, Throwable $exception): void
-    {
-        app(self::class)->execute($proxyId, $source, $checkJobToken, $exception);
-    }
-
     public function execute(int $proxyId, ProxyCheckSource $source, string $checkJobToken, Throwable $exception): void
     {
         $proxy = ProxyServer::query()->find($proxyId);
